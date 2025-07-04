@@ -149,7 +149,6 @@ export default function PortfolioDashboard() {
     };
 
     const config = categoryConfig[category.name as keyof typeof categoryConfig];
-    const isOver = category.gap > 2;
     const isUnder = category.gap < -2;
     const isOnTarget = Math.abs(category.gap) <= 2;
 
@@ -174,33 +173,6 @@ export default function PortfolioDashboard() {
     };
   });
 
-  // Get asset icon/flag for holdings
-  const getAssetIcon = (symbol: string) => {
-    const icons: { [key: string]: string } = {
-      'NVDA': '🇺🇸', 'GOOG': '🇺🇸', 'TSLA': '🇺🇸', 'IREN': '🇺🇸',
-      'VUAA': '🇺🇸', 'INDIA': '🇮🇳', 'SGD': '🇸🇬', 'USDC': '💵', 
-      'BTC': '₿', 'WBTC': '₿', 'GOLD': '🥇'
-    };
-    return icons[symbol] || '📊';
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'perfect': return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
-      case 'underweight': return 'text-amber-400 bg-amber-500/10 border-amber-500/30';
-      case 'excess': return 'text-red-400 bg-red-500/10 border-red-500/30';
-      default: return 'text-slate-400 bg-slate-500/10 border-slate-500/30';
-    }
-  };
-
-  const getProgressColor = (status: string) => {
-    switch (status) {
-      case 'perfect': return '#10b981';
-      case 'underweight': return '#f59e0b';
-      case 'excess': return '#ef4444';
-      default: return '#64748b';
-    }
-  };
 
   // ACTION BIAS: Specific, actionable recommendations
   const actionItems: ActionItem[] = [
