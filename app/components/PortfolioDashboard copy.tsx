@@ -1,10 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import NetWorthTracker from './NetWorthTracker';
-import EnhancedCategoryCard from './EnhancedCategoryCard';
-import SmartGrid from './SmartGrid'; // ← ADD THIS LINE
-
+import { useState, useEffect } from 'react';
 
 interface Holding {
   id: string;
@@ -40,7 +36,6 @@ export default function PortfolioDashboard() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
   // Updated allocation targets (80/20 growth/hedge approach)
   const targets = {
@@ -49,19 +44,6 @@ export default function PortfolioDashboard() {
     Hedge: 10,     // BTC + Gold + (future bonds)
     Liquidity: 10  // Cash + stablecoins
   };
-
-  const handleToggleExpand = useCallback((categoryName: string) => {
-    setExpandedCards(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(categoryName)) {
-        newSet.delete(categoryName);
-      } else {
-        newSet.add(categoryName);
-      }
-      console.log('Toggling:', categoryName, 'New set:', newSet);
-      return newSet;
-    });
-  }, []);
 
   // Fetch holdings from database
   useEffect(() => {
@@ -103,106 +85,7 @@ export default function PortfolioDashboard() {
     };
   });
 
-  // Enhanced category data with icons, colors, and descriptions
-  const enhancedCategoryData = categoryData.map(category => {
-    const categoryConfig = {
-      Core: {
-        icon: (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-            <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"></polyline>
-          </svg>
-        ),
-        color: '#3b82f6',
-        description: 'Broad market index funds providing stable foundation'
-      },
-      Growth: {
-        icon: (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-            <circle cx="8" cy="8" r="6"></circle>
-            <path d="M18.09 10.37A6 6 0 1 1 10.34 18"></path>
-            <path d="M7 6h1v4"></path>
-            <path d="M16.71 13.88l.7.71-2.82 2.82"></path>
-          </svg>
-        ),
-        color: '#10b981',
-        description: 'Individual growth stocks and emerging technologies'
-      },
-      Hedge: {
-        icon: (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-          </svg>
-        ),
-        color: '#f59e0b', 
-        description: 'Alternative assets providing portfolio protection'
-      },
-      Liquidity: {
-        icon: (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-            <path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path>
-            <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path>
-          </svg>
-        ),
-        color: '#64748b',
-        description: 'Cash and cash equivalents for opportunities'
-      }
-    };
-
-    const config = categoryConfig[category.name as keyof typeof categoryConfig];
-    const isOver = category.gap > 2;
-    const isUnder = category.gap < -2;
-    const isOnTarget = Math.abs(category.gap) <= 2;
-
-    let status, statusText;
-    if (isOnTarget) {
-      status = 'perfect';
-      statusText = 'Perfect allocation';
-    } else if (isUnder) {
-      status = 'underweight';
-      statusText = `Add ${Math.abs(category.gapAmount / 1000).toFixed(0)}k needed`;
-    } else {
-      status = 'excess';
-      statusText = `Trim ${Math.abs(category.gapAmount / 1000).toFixed(0)}k excess`;
-    }
-
-    return {
-      ...category,
-      ...config,
-      status,
-      statusText,
-      id: category.name // Ensure unique ID
-    };
-  });
-
-  // Get asset icon/flag for holdings
-  const getAssetIcon = (symbol: string) => {
-    const icons: { [key: string]: string } = {
-      'NVDA': '🇺🇸', 'GOOG': '🇺🇸', 'TSLA': '🇺🇸', 'IREN': '🇺🇸',
-      'VUAA': '🇺🇸', 'INDIA': '🇮🇳', 'SGD': '🇸🇬', 'USDC': '💵', 
-      'BTC': '₿', 'WBTC': '₿', 'GOLD': '🥇'
-    };
-    return icons[symbol] || '📊';
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'perfect': return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30';
-      case 'underweight': return 'text-amber-400 bg-amber-500/10 border-amber-500/30';
-      case 'excess': return 'text-red-400 bg-red-500/10 border-red-500/30';
-      default: return 'text-slate-400 bg-slate-500/10 border-slate-500/30';
-    }
-  };
-
-  const getProgressColor = (status: string) => {
-    switch (status) {
-      case 'perfect': return '#10b981';
-      case 'underweight': return '#f59e0b';
-      case 'excess': return '#ef4444';
-      default: return '#64748b';
-    }
-  };
-
-  // ACTION BIAS: Specific, actionable recommendations
+  // ACTION BIAS: Specific, actionable recommendations with updated calculations
   const actionItems: ActionItem[] = [
     {
       id: 'srs',
@@ -253,13 +136,12 @@ export default function PortfolioDashboard() {
     <div className="min-h-screen bg-gray-900 text-white p-4">
       <div className="max-w-6xl mx-auto">
         <h1 className="text-2xl font-bold text-white mb-6">Action Bias Portfolio</h1>
-
-        <NetWorthTracker />
         
-        {/* Portfolio Header with Metrics */}
+        {/* Redesigned Header with Better Layout */}
         <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
+          {/* Top Row: Portfolio Metrics + FI Progress */}
           <div className="flex justify-between items-start mb-6">
-            {/* Left: Portfolio Metrics */}
+            {/* Left: Four Portfolio Metrics in Equal Spacing */}
             <div className="flex gap-8">
               <div>
                 <p className="text-4xl font-bold text-green-400">${totalValue.toLocaleString()}</p>
@@ -279,14 +161,16 @@ export default function PortfolioDashboard() {
               </div>
             </div>
 
-            {/* Right: FI Progress Bar */}
+            {/* Right: Full-Width FI Progress Bar */}
             <div className="flex-1 ml-8">
               <div className="relative bg-gray-700 rounded-full h-4 mb-2">
+                {/* First Million Progress (0 to 1M) */}
                 <div 
                   className="absolute h-4 bg-gradient-to-r from-blue-500 to-blue-400 rounded-l-full"
                   style={{ width: `${Math.min(firstMillionProgress, 100) * 0.4}%` }}
                 />
                 
+                {/* Lean FI Progress (1M to 1.85M) */}
                 {totalValue > 1000000 && (
                   <div 
                     className="absolute h-4 bg-gradient-to-r from-yellow-500 to-yellow-400"
@@ -297,6 +181,7 @@ export default function PortfolioDashboard() {
                   />
                 )}
                 
+                {/* Full FI Progress (1.85M to 2.5M) */}
                 {totalValue > 1850000 && (
                   <div 
                     className="absolute h-4 bg-gradient-to-r from-green-500 to-green-400 rounded-r-full"
@@ -307,10 +192,12 @@ export default function PortfolioDashboard() {
                   />
                 )}
                 
+                {/* Milestone markers */}
                 <div className="absolute top-0 left-[40%] w-0.5 h-4 bg-white opacity-70"></div>
                 <div className="absolute top-0 left-[74%] w-0.5 h-4 bg-white opacity-70"></div>
               </div>
               
+              {/* Bar Labels */}
               <div className="flex justify-between text-xs text-gray-500 mb-1">
                 <span>$0</span>
                 <span>$1M</span>
@@ -318,6 +205,7 @@ export default function PortfolioDashboard() {
                 <span>$2.5M (Full FI)</span>
               </div>
               
+              {/* Progress Info */}
               <div className="text-right">
                 <p className="text-sm text-gray-400">
                   ${(1000000 - totalValue).toLocaleString()} to first milestone
@@ -325,36 +213,101 @@ export default function PortfolioDashboard() {
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Enhanced Portfolio Allocation Cards - REPLACING old allocation status */}
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-200 mb-4">Portfolio Allocation</h2>
-          <SmartGrid
-            expandedItems={expandedCards}
-            gap={24}
-            minCardWidth={400}
-            className="smart-grid-container"
-          >
-            {enhancedCategoryData.map((category) => (
-              <EnhancedCategoryCard
-                key={category.name}
-                category={{
-                  ...category,
-                  id: category.name // Ensure unique ID
-                }}
-                totalValue={totalValue}
-                isExpanded={expandedCards.has(category.name)}
-                onToggleExpand={handleToggleExpand}
-              />
-            ))}
-          </SmartGrid>
+          {/* Status Table with Mini Pie Charts */}
+          <div className="space-y-3">
+            <div className="grid grid-cols-6 gap-4 text-sm font-medium text-gray-400 border-b border-gray-600 pb-2">
+              <span>STATUS</span>
+              <span>VISUAL</span>
+              <span>CURRENT</span>
+              <span>TARGET</span>
+              <span>GAP</span>
+              <span>ACTION</span>
+            </div>
+            {categoryData.map(category => {
+              const isOver = category.gap > 2;
+              const isUnder = category.gap < -2;
+              const isOnTarget = Math.abs(category.gap) <= 2;
+              const statusIcon = isOver ? '🔴' : isUnder ? '🟠' : '✅';
+              const gapText = isOver 
+                ? `-$${Math.abs(category.gapAmount / 1000).toFixed(0)}k` 
+                : isUnder 
+                ? `+$${Math.abs(category.gapAmount / 1000).toFixed(0)}k`
+                : 'Perfect';
+              const actionText = isOver
+                ? `Trim ${category.name.toLowerCase()}`
+                : isUnder
+                ? `Buy more ${category.name === 'Core' ? 'VUAA' : category.name.toLowerCase()}`
+                : 'Hold steady';
+
+              // Calculate pie chart percentages
+              const targetValue = (category.target / 100) * totalValue;
+              const currentPercent = Math.min((category.currentValue / targetValue) * 100, 100);
+              const excessPercent = Math.max(((category.currentValue - targetValue) / targetValue) * 100, 0);
+
+              return (
+                <div key={category.name} className="grid grid-cols-6 gap-4 text-sm py-3 border-b border-gray-700 items-center">
+                  <span className="flex items-center gap-2">
+                    {statusIcon} {category.name}
+                  </span>
+                  
+                  {/* Mini Pie Chart */}
+                  <div className="relative w-8 h-8">
+                    <svg className="w-8 h-8 transform -rotate-90" viewBox="0 0 32 32">
+                      {/* Background circle */}
+                      <circle cx="16" cy="16" r="12" fill="none" stroke="#374151" strokeWidth="4"/>
+                      
+                      {/* Current allocation (up to 100%) */}
+                      <circle 
+                        cx="16" cy="16" r="12" fill="none" 
+                        stroke={isOnTarget ? '#10b981' : isUnder ? '#f59e0b' : '#ef4444'}
+                        strokeWidth="4"
+                        strokeDasharray={`${currentPercent * 0.75} 75`}
+                        strokeLinecap="round"
+                      />
+                      
+                      {/* Excess (over 100%) */}
+                      {excessPercent > 0 && (
+                        <circle 
+                          cx="16" cy="16" r="8" fill="none" 
+                          stroke="#dc2626"
+                          strokeWidth="2"
+                          strokeDasharray={`${Math.min(excessPercent * 0.5, 50)} 50`}
+                          strokeLinecap="round"
+                        />
+                      )}
+                    </svg>
+                  </div>
+                  
+                  <span className="font-medium">${(category.currentValue / 1000).toFixed(0)}k</span>
+                  <span>${((category.target / 100) * totalValue / 1000).toFixed(0)}k</span>
+                  <span className={`font-medium ${
+                    isOver ? 'text-red-400' : isUnder ? 'text-orange-400' : 'text-green-400'
+                  }`}>
+                    {gapText}
+                  </span>
+                  <span className="text-gray-400">{actionText}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Action Bias Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           {actionItems.map(action => (
             <ActionBiasCard key={action.id} action={action} />
+          ))}
+        </div>
+
+        {/* Fixed Holdings Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {categoryData.map(category => (
+            <CategoryCard 
+              key={category.name}
+              category={category}
+              totalValue={totalValue}
+            />
           ))}
         </div>
 
@@ -438,6 +391,98 @@ function ActionBiasCard({ action }: { action: ActionItem }) {
           {action.actionText}
         </div>
       )}
+    </div>
+  );
+}
+
+function CategoryCard({ category, totalValue }: { category: CategoryData; totalValue: number }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const targetValue = (category.target / 100) * totalValue;
+  const isOverweight = category.gap > 2;
+  const isUnderweight = category.gap < -2;
+  const isOnTarget = Math.abs(category.gap) <= 2;
+
+  const getCategoryIcon = () => {
+    const icons = { Core: '🔵', Growth: '🟢', Hedge: '🟡', Liquidity: '⚪' };
+    return icons[category.name as keyof typeof icons] || '⚪';
+  };
+
+  const getCardBorder = () => {
+    if (isOnTarget) return 'border-green-500/30';
+    if (isOverweight) return 'border-red-500/30';
+    return 'border-orange-500/30';
+  };
+
+  const getAssetIcon = (symbol: string) => {
+    const icons: { [key: string]: string } = {
+      'NVDA': '🟢', 'GOOG': '🔵', 'TSLA': '🔴', 'BTC': '🟠', 'ETH': '⚪',
+      'VUAA': '📈', 'SGD': '🇸🇬', 'USDC': '💵', 'GOLD': '🥇', 'INDIA': '🇮🇳'
+    };
+    return icons[symbol] || '📊';
+  };
+
+  const maxVisibleHoldings = isExpanded ? category.holdings.length : 4;
+
+  return (
+    <div 
+      className={`bg-gray-800 rounded-lg p-4 border ${getCardBorder()} transition-all duration-300`}
+      style={{ 
+        minHeight: isExpanded ? 'auto' : '200px',
+        // Prevent horizontal expansion issues
+        gridColumn: 'span 1'
+      }}
+    >
+      {/* Header - Clickable */}
+      <div 
+        className="flex items-center justify-between mb-4 cursor-pointer"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{getCategoryIcon()}</span>
+          <div>
+            <h3 className="text-sm font-semibold text-white">{category.name.toUpperCase()}</h3>
+            <p className="text-xs text-gray-400">
+              ${(category.currentValue / 1000).toFixed(0)}k / ${(targetValue / 1000).toFixed(0)}k
+            </p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-lg font-bold text-white">
+            ${(category.currentValue / 1000).toFixed(0)}k
+          </p>
+          <p className="text-xs text-gray-400">{category.currentPercent.toFixed(1)}%</p>
+          <p className="text-xs text-blue-400">{isExpanded ? '▲' : '▼'}</p>
+        </div>
+      </div>
+
+      {/* Status */}
+      <div className={`text-xs font-medium mb-3 ${
+        isOnTarget ? 'text-green-400' : isOverweight ? 'text-red-400' : 'text-orange-400'
+      }`}>
+        {isOnTarget && '✅ Perfect allocation'}
+        {isOverweight && `🔴 Trim ${Math.abs(category.gapAmount / 1000).toFixed(0)}k excess`}
+        {isUnderweight && `🟠 Add ${Math.abs(category.gapAmount / 1000).toFixed(0)}k needed`}
+      </div>
+
+      {/* Holdings List - Expand Vertically Only */}
+      <div className="space-y-2 overflow-hidden">
+        {category.holdings.slice(0, maxVisibleHoldings).map(holding => (
+          <div key={holding.id} className="flex justify-between items-center text-xs py-1">
+            <div className="flex items-center gap-1 flex-1 min-w-0">
+              <span>{getAssetIcon(holding.symbol)}</span>
+              <span className="text-white font-medium truncate">{holding.symbol}</span>
+              <span className="text-gray-500 text-xs truncate">({holding.location})</span>
+            </div>
+            <span className="text-white ml-2">${(holding.value / 1000).toFixed(0)}k</span>
+          </div>
+        ))}
+        
+        {!isExpanded && category.holdings.length > 4 && (
+          <div className="text-xs text-gray-500 text-center cursor-pointer hover:text-blue-400 py-1">
+            +{category.holdings.length - 4} more (click to expand)
+          </div>
+        )}
+      </div>
     </div>
   );
 }
