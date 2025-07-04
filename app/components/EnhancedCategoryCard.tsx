@@ -206,10 +206,6 @@ const EnhancedCategoryCard: React.FC<EnhancedCategoryCardProps> = ({
             ? 'max-h-[500px] opacity-100' 
             : 'max-h-0 opacity-0'
         }`}
-        style={{
-          // Use CSS custom property for smooth animation
-          '--expanded-height': isExpanded ? 'auto' : '0'
-        }}
       >
         {isExpanded && (
           <div className="space-y-4 pt-4 border-t border-slate-700/50">
