@@ -10,6 +10,12 @@ interface YearlyData {
   returnPercent: number; // calculated field
 }
 
+interface EditFormData {
+  year: string;
+  netWorth: string;
+  annualInvestment: string;
+}
+
 export default function NetWorthTracker() {
   // Your actual data with corrected timeline + market gains calculated
   const [yearlyData, setYearlyData] = useState<YearlyData[]>([
@@ -24,6 +30,9 @@ export default function NetWorthTracker() {
   ]);
 
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [showDataManager, setShowDataManager] = useState(false);
+  const [editingYear, setEditingYear] = useState<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   // Calculate key metrics
@@ -43,37 +52,84 @@ export default function NetWorthTracker() {
 
   // Chart dimensions and scaling
   const chartWidth = 800;
-  const chartHeight = 320; // Increased height for year labels below
-  const padding = 90; // Increased left padding for Y-axis labels
+  const chartHeight = 320;
+  const padding = 90;
   const plotWidth = chartWidth - 2 * padding;
-  const plotHeight = chartHeight - 120; // More space for labels below
+  const plotHeight = chartHeight - 120;
   
   // Fixed Y-axis: proper 100k increments
-  const yAxisMax = 600000; // 600k max
+  const yAxisMax = 600000;
   const yAxisIncrements = [0, 100000, 200000, 300000, 400000, 500000, 600000];
   
-  const maxInvestment = 80000; // Standard max for scaling
+  const maxInvestment = 80000;
   const maxGains = Math.max(...yearlyData.map(d => Math.abs(d.marketGains)));
   
   // Scale for investment bars (relative to max investment)
-  const investmentScale = 80; // Max height for investment bars
-  const gainsScale = 120; // Max height for gains/losses
+  const investmentScale = 80;
+  const gainsScale = 120;
   
   // Get bar color based on gains
   const getBarColor = (marketGains: number) => {
     return marketGains >= 0 ? "#10b981" : "#ef4444";
   };
+
+  // Recalculate market gains and return percentages for the entire dataset
+  const recalculateMetrics = (data: YearlyData[]) => {
+    return data.map((yearData, index) => {
+      if (index === 0) {
+        // First year: market gains = net worth - annual investment
+        const marketGains = yearData.netWorth - yearData.annualInvestment;
+        const returnPercent = yearData.annualInvestment > 0 ? 
+          ((marketGains / yearData.annualInvestment) * 100) : 0;
+        return { ...yearData, marketGains, returnPercent };
+      } else {
+        // Subsequent years: market gains = current net worth - previous net worth - annual investment
+        const previousNetWorth = data[index - 1].netWorth;
+        const marketGains = yearData.netWorth - previousNetWorth - yearData.annualInvestment;
+        const returnPercent = previousNetWorth > 0 ? 
+          ((marketGains / previousNetWorth) * 100) : 0;
+        return { ...yearData, marketGains, returnPercent };
+      }
+    });
+  };
   
   const addNewYear = (year: number, netWorth: number, annualInvestment: number) => {
-    // Calculate market gains
-    const previousNetWorth = yearlyData.find(d => d.year === year - 1)?.netWorth || 0;
-    const marketGains = netWorth - previousNetWorth - annualInvestment;
-    const returnPercent = previousNetWorth > 0 ? ((marketGains / previousNetWorth) * 100) : 0;
-    
-    const newData = [...yearlyData, { year, netWorth, annualInvestment, marketGains, returnPercent }]
-      .sort((a, b) => a.year - b.year);
-    setYearlyData(newData);
+    const newYearData = { year, netWorth, annualInvestment, marketGains: 0, returnPercent: 0 };
+    const newData = [...yearlyData, newYearData].sort((a, b) => a.year - b.year);
+    const recalculatedData = recalculateMetrics(newData);
+    setYearlyData(recalculatedData);
     setShowAddForm(false);
+  };
+
+  const editYear = (year: number, netWorth: number, annualInvestment: number) => {
+    const updatedData = yearlyData.map(data => 
+      data.year === year 
+        ? { ...data, netWorth, annualInvestment }
+        : data
+    );
+    const recalculatedData = recalculateMetrics(updatedData);
+    setYearlyData(recalculatedData);
+    setShowEditForm(false);
+    setEditingYear(null);
+  };
+
+  const deleteYear = (yearToDelete: number) => {
+    if (yearlyData.length <= 1) {
+      alert("Cannot delete the last remaining data point!");
+      return;
+    }
+    
+    if (confirm(`Are you sure you want to delete data for ${yearToDelete}?`)) {
+      const filteredData = yearlyData.filter(data => data.year !== yearToDelete);
+      const recalculatedData = recalculateMetrics(filteredData);
+      setYearlyData(recalculatedData);
+    }
+  };
+
+  const startEdit = (year: number) => {
+    setEditingYear(year);
+    setShowEditForm(true);
+    setShowDataManager(false);
   };
 
   return (
@@ -85,7 +141,7 @@ export default function NetWorthTracker() {
           <h2 className="text-xl font-bold text-white mb-1">Net Worth Journey</h2>
           <p className="text-sm text-slate-400">Investment contributions vs market performance over time</p>
         </div>
-        <div className="flex gap-4 items-center">
+        <div className="flex gap-3 items-center">
           {/* Legend */}
           <div className="hidden md:flex gap-4 text-xs">
             <div className="flex items-center gap-2">
@@ -104,15 +160,27 @@ export default function NetWorthTracker() {
               <div className="w-3 h-3 bg-red-500 rounded-sm"></div>
               <span className="text-slate-400">Losses</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
-              <span className="text-slate-400">% Return</span>
-            </div>
           </div>
+          
+          {/* Action Buttons */}
+          <button
+            onClick={() => setShowDataManager(true)}
+            className="bg-slate-600 text-white px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors text-sm font-medium flex items-center gap-2"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+            Manage Data
+          </button>
           <button
             onClick={() => setShowAddForm(true)}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium flex items-center gap-2"
           >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14"/>
+              <path d="M5 12h14"/>
+            </svg>
             Add Year
           </button>
         </div>
@@ -174,7 +242,7 @@ export default function NetWorthTracker() {
             
             // Investment bar height calculation
             const investmentHeight = (data.annualInvestment / maxInvestment) * investmentScale;
-            const investmentY = chartHeight - 100 - investmentHeight; // More space below
+            const investmentY = chartHeight - 100 - investmentHeight;
             
             // Market gains/losses bar
             const gainsHeight = Math.abs(data.marketGains / maxGains) * gainsScale;
@@ -182,12 +250,12 @@ export default function NetWorthTracker() {
             const barColor = getBarColor(data.marketGains);
             
             // Smart text positioning to prevent overlap
-            const isLowValue = data.netWorth < 100000; // Values under 100k
-            const netWorthTextY = isLowValue ? netWorthY + 20 : netWorthY - 15; // Below for low values, above for high
+            const isLowValue = data.netWorth < 100000;
+            const netWorthTextY = isLowValue ? netWorthY + 20 : netWorthY - 15;
             
             return (
               <g key={data.year}>
-                {/* Investment bar (blue) - moved BEFORE hover area */}
+                {/* Investment bar (blue) */}
                 <rect
                   x={x - 8}
                   y={investmentY}
@@ -200,7 +268,7 @@ export default function NetWorthTracker() {
                   style={{ pointerEvents: 'none' }}
                 />
                 
-                {/* Market gains/losses bar - moved BEFORE hover area */}
+                {/* Market gains/losses bar */}
                 <rect
                   x={x - 8}
                   y={gainsY}
@@ -213,7 +281,7 @@ export default function NetWorthTracker() {
                   style={{ pointerEvents: 'none' }}
                 />
                 
-                {/* FULL VERTICAL hover area covering entire year column - AFTER bars */}
+                {/* FULL VERTICAL hover area covering entire year column */}
                 <rect
                   x={x - 25}
                   y={padding}
@@ -225,12 +293,12 @@ export default function NetWorthTracker() {
                   style={{ cursor: 'pointer' }}
                 />
                 
-                {/* Year label - BELOW X-axis with proper spacing */}
+                {/* Year label */}
                 <text x={x} y={chartHeight - 5} fill="#94a3b8" fontSize="12" textAnchor="middle" fontWeight="500">
                   {data.year === 2025 ? '2025*' : data.year}
                 </text>
                 
-                {/* Net worth - positioned above the gray net worth marker */}
+                {/* Net worth */}
                 <text 
                   x={x} 
                   y={netWorthTextY} 
@@ -385,19 +453,158 @@ export default function NetWorthTracker() {
         </div>
       </div>
 
+      {/* Data Manager Modal */}
+      {showDataManager && (
+        <DataManagerModal 
+          yearlyData={yearlyData}
+          onEdit={startEdit}
+          onDelete={deleteYear}
+          onClose={() => setShowDataManager(false)}
+        />
+      )}
+
       {/* Add New Year Form */}
       {showAddForm && (
         <AddYearForm onAdd={addNewYear} onCancel={() => setShowAddForm(false)} />
+      )}
+
+      {/* Edit Year Form */}
+      {showEditForm && editingYear && (
+        <EditYearForm 
+          yearlyData={yearlyData}
+          editingYear={editingYear}
+          onEdit={editYear}
+          onCancel={() => {
+            setShowEditForm(false);
+            setEditingYear(null);
+          }}
+        />
       )}
     </div>
   );
 }
 
+// Data Manager Modal Component
+function DataManagerModal({ 
+  yearlyData, 
+  onEdit, 
+  onDelete, 
+  onClose 
+}: { 
+  yearlyData: YearlyData[];
+  onEdit: (year: number) => void;
+  onDelete: (year: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-slate-800 rounded-xl w-full max-w-4xl max-h-[80vh] border border-slate-700 overflow-hidden">
+        <div className="p-6 border-b border-slate-700">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-bold text-white">Manage Net Worth Data</h3>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-white transition-colors"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18"/>
+                <path d="M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <p className="text-sm text-slate-400 mt-1">Edit or delete yearly data points. Market gains and returns are automatically recalculated.</p>
+        </div>
+        
+        <div className="overflow-y-auto max-h-[60vh]">
+          <div className="p-6">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700">
+                    <th className="text-left py-3 px-4 font-medium text-slate-300">Year</th>
+                    <th className="text-right py-3 px-4 font-medium text-slate-300">Net Worth</th>
+                    <th className="text-right py-3 px-4 font-medium text-slate-300">Investment</th>
+                    <th className="text-right py-3 px-4 font-medium text-slate-300">Market Gains</th>
+                    <th className="text-right py-3 px-4 font-medium text-slate-300">Return %</th>
+                    <th className="text-center py-3 px-4 font-medium text-slate-300">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {yearlyData.map((data) => (
+                    <tr key={data.year} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
+                      <td className="py-3 px-4 font-medium text-white">
+                        {data.year === 2025 ? `${data.year}*` : data.year}
+                      </td>
+                      <td className="py-3 px-4 text-right text-white">
+                        ${data.netWorth.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-right text-blue-400">
+                        ${data.annualInvestment.toLocaleString()}
+                      </td>
+                      <td className={`py-3 px-4 text-right font-medium ${
+                        data.marketGains >= 0 ? 'text-emerald-400' : 'text-red-400'
+                      }`}>
+                        {data.marketGains >= 0 ? '+' : ''}${data.marketGains.toLocaleString()}
+                      </td>
+                      <td className={`py-3 px-4 text-right font-medium ${
+                        data.returnPercent >= 0 ? 'text-emerald-400' : 'text-red-400'
+                      }`}>
+                        {data.returnPercent >= 0 ? '+' : ''}{data.returnPercent.toFixed(1)}%
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex gap-2 justify-center">
+                          <button
+                            onClick={() => onEdit(data.year)}
+                            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                            title="Edit"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 20h9"/>
+                              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => onDelete(data.year)}
+                            className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                            title="Delete"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M3 6h18"/>
+                              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        
+        <div className="p-6 border-t border-slate-700 bg-slate-900/50">
+          <div className="flex justify-end">
+            <button
+              onClick={onClose}
+              className="bg-slate-600 text-white px-6 py-2 rounded-lg hover:bg-slate-700 transition-colors font-medium"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Add Year Form Component
 function AddYearForm({ onAdd, onCancel }: { 
   onAdd: (year: number, netWorth: number, annualInvestment: number) => void; 
   onCancel: () => void; 
 }) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<EditFormData>({
     year: new Date().getFullYear().toString(),
     netWorth: '',
     annualInvestment: ''
@@ -459,6 +666,117 @@ function AddYearForm({ onAdd, onCancel }: {
               className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors font-medium"
             >
               Add Year
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex-1 bg-slate-600 text-white py-2 px-4 rounded-lg hover:bg-slate-700 transition-colors font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Edit Year Form Component
+function EditYearForm({ 
+  yearlyData,
+  editingYear,
+  onEdit, 
+  onCancel 
+}: { 
+  yearlyData: YearlyData[];
+  editingYear: number;
+  onEdit: (year: number, netWorth: number, annualInvestment: number) => void; 
+  onCancel: () => void; 
+}) {
+  const currentData = yearlyData.find(data => data.year === editingYear);
+  const [formData, setFormData] = useState<EditFormData>({
+    year: editingYear.toString(),
+    netWorth: currentData?.netWorth.toString() || '',
+    annualInvestment: currentData?.annualInvestment.toString() || ''
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onEdit(
+      parseInt(formData.year),
+      parseFloat(formData.netWorth),
+      parseFloat(formData.annualInvestment)
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md border border-slate-700">
+        <h3 className="text-lg font-bold text-white mb-4">Edit {editingYear} Data</h3>
+        <p className="text-sm text-slate-400 mb-4">
+          Market gains and return percentage will be automatically recalculated.
+        </p>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Year</label>
+            <input
+              type="number"
+              value={formData.year}
+              onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Net Worth ($)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={formData.netWorth}
+              onChange={(e) => setFormData({ ...formData, netWorth: e.target.value })}
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+              required
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Annual Investment ($)</label>
+            <input
+              type="number"
+              step="0.01"
+              value={formData.annualInvestment}
+              onChange={(e) => setFormData({ ...formData, annualInvestment: e.target.value })}
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:border-indigo-500 focus:outline-none"
+              required
+            />
+          </div>
+          
+          <div className="bg-slate-700/50 rounded-lg p-3 border border-slate-600">
+            <div className="text-xs text-slate-400 mb-2">Current calculated values:</div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-slate-400">Market Gains:</span>
+                <div className={`font-medium ${currentData && currentData.marketGains >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {currentData && (currentData.marketGains >= 0 ? '+' : '')}${currentData?.marketGains.toLocaleString()}
+                </div>
+              </div>
+              <div>
+                <span className="text-slate-400">Return:</span>
+                <div className={`font-medium ${currentData && currentData.returnPercent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {currentData && (currentData.returnPercent >= 0 ? '+' : '')}{currentData?.returnPercent.toFixed(1)}%
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex gap-3 pt-2">
+            <button
+              type="submit"
+              className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              Update Year
             </button>
             <button
               type="button"
