@@ -48,6 +48,36 @@ export default function PortfolioDashboard() {
     Liquidity: 10  // Cash + stablecoins
   };
 
+  // TEMPORARY: Sample portfolio data to restore your portfolio
+  const sampleHoldings: Holding[] = [
+    // Core Holdings
+    { id: '1', symbol: 'VUAA', name: 'Vanguard S&P 500', value: 53000, category: 'Core', location: 'IBKR' },
+    { id: '2', symbol: 'INDIA', name: 'Indian ETF', value: 64000, category: 'Core', location: 'ICICI Direct' },
+    
+    // Growth Holdings
+    { id: '3', symbol: 'NVDA', name: 'NVIDIA Corporation', value: 20000, category: 'Growth', location: 'IBKR' },
+    { id: '4', symbol: 'GOOG', name: 'Alphabet Inc', value: 18000, category: 'Growth', location: 'IBKR' },
+    { id: '5', symbol: 'TSLA', name: 'Tesla Inc', value: 18000, category: 'Growth', location: 'IBKR' },
+    { id: '6', symbol: 'IREN', name: 'Iris Energy', value: 4000, category: 'Growth', location: 'IBKR' },
+    { id: '7', symbol: 'HIMS', name: 'Hims & Hers Health', value: 15000, category: 'Growth', location: 'IBKR' },
+    { id: '8', symbol: 'UNH', name: 'UnitedHealth Group', value: 12000, category: 'Growth', location: 'IBKR' },
+    { id: '9', symbol: 'AAPL', name: 'Apple Inc', value: 25000, category: 'Growth', location: 'IBKR' },
+    { id: '10', symbol: 'AMGN', name: 'Amgen Inc', value: 8000, category: 'Growth', location: 'IBKR' },
+    { id: '11', symbol: 'CRM', name: 'Salesforce', value: 6000, category: 'Growth', location: 'IBKR' },
+    { id: '12', symbol: 'ETH', name: 'Ethereum', value: 48000, category: 'Growth', location: 'CoinGecko' },
+    
+    // Hedge Holdings
+    { id: '13', symbol: 'BTC', name: 'Bitcoin', value: 58000, category: 'Hedge', location: 'CoinGecko' },
+    { id: '14', symbol: 'WBTC', name: 'Wrapped Bitcoin', value: 17000, category: 'Hedge', location: 'CoinGecko' },
+    { id: '15', symbol: 'GOLD', name: 'Physical Gold', value: 14000, category: 'Hedge', location: 'Physical' },
+    
+    // Liquidity Holdings
+    { id: '16', symbol: 'SGD', name: 'Singapore Dollar', value: 44000, category: 'Liquidity', location: 'Standard Chartered' },
+    { id: '17', symbol: 'SGD', name: 'Singapore Dollar', value: 30000, category: 'Liquidity', location: 'DBS Bank' },
+    { id: '18', symbol: 'USDC', name: 'USD Coin', value: 30000, category: 'Liquidity', location: 'Aave' },
+    { id: '19', symbol: 'USDC', name: 'USD Coin', value: 3000, category: 'Liquidity', location: 'Binance' }
+  ];
+
   const handleToggleExpand = useCallback((categoryName: string) => {
     setExpandedCards(prev => {
       const newSet = new Set(prev);
@@ -61,7 +91,7 @@ export default function PortfolioDashboard() {
     });
   }, []);
 
-  // Fetch holdings from database
+  // Fetch holdings from database with fallback to sample data
   useEffect(() => {
     fetchHoldings();
   }, []);
@@ -69,21 +99,32 @@ export default function PortfolioDashboard() {
   const fetchHoldings = async () => {
     try {
       const response = await fetch('/api/holdings');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
-      setHoldings(data);
+      // Ensure data is an array
+      if (Array.isArray(data) && data.length > 0) {
+        setHoldings(data);
+      } else {
+        console.warn('API returned empty data, using sample portfolio');
+        setHoldings(sampleHoldings); // Use sample data as fallback
+      }
     } catch (error) {
-      console.error('Error fetching holdings:', error);
+      console.error('Error fetching holdings, using sample data:', error);
+      setHoldings(sampleHoldings); // Use sample data as fallback
     } finally {
       setLoading(false);
     }
   };
 
-  const totalValue = holdings.reduce((sum, holding) => sum + holding.value, 0);
+  // Safe calculation with fallback for empty holdings
+  const totalValue = Array.isArray(holdings) ? holdings.reduce((sum, holding) => sum + holding.value, 0) : 0;
   const firstMillionProgress = (totalValue / 1000000) * 100;
   
-  // Group holdings by category
+  // Group holdings by category with safe array handling
   const categoryData: CategoryData[] = Object.entries(targets).map(([categoryName, target]) => {
-    const categoryHoldings = holdings.filter(h => h.category === categoryName);
+    const categoryHoldings = Array.isArray(holdings) ? holdings.filter(h => h.category === categoryName) : [];
     const currentValue = categoryHoldings.reduce((sum, h) => sum + h.value, 0);
     const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
     const gap = currentPercent - target;
@@ -209,7 +250,11 @@ export default function PortfolioDashboard() {
   ];
 
   const addHolding = (holding: Omit<Holding, 'id'>) => {
-    setHoldings(prev => [...prev, { ...holding, id: Date.now().toString() }]);
+    setHoldings(prev => {
+      // Ensure prev is an array
+      const currentHoldings = Array.isArray(prev) ? prev : [];
+      return [...currentHoldings, { ...holding, id: Date.now().toString() }];
+    });
     setShowAddForm(false);
   };
 
@@ -217,6 +262,42 @@ export default function PortfolioDashboard() {
     return (
       <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
         <div className="text-xl">Loading your portfolio...</div>
+      </div>
+    );
+  }
+
+  // If no holdings and not loading, show empty state
+  if (!Array.isArray(holdings) || holdings.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white p-4">
+        <div className="max-w-6xl mx-auto">
+          <h1 className="text-2xl font-bold text-white mb-6">Action Bias Portfolio</h1>
+          
+          <div className="bg-gray-800 rounded-lg p-8 text-center border border-gray-700">
+            <h2 className="text-xl font-semibold text-gray-200 mb-4">API Connection Issue</h2>
+            <p className="text-gray-400 mb-6">Unable to connect to database. Please check your API endpoint or refresh the page.</p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
+              >
+                Refresh Page
+              </button>
+              <button
+                onClick={() => setShowAddForm(true)}
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                Add Holdings Manually
+              </button>
+            </div>
+          </div>
+
+          {showAddForm && (
+            <div className="mt-6">
+              <AddHoldingForm onAdd={addHolding} onCancel={() => setShowAddForm(false)} />
+            </div>
+          )}
+        </div>
       </div>
     );
   }
