@@ -200,13 +200,12 @@ const EnhancedCategoryCard: React.FC<EnhancedCategoryCardProps> = ({
       </div>
 
       {/* Expanded Content - Animated with proper height calculation */}
-      <div 
-        className={`overflow-hidden transition-all duration-500 ease-out ${
-          isExpanded 
-            ? 'max-h-[500px] opacity-100' 
-            : 'max-h-0 opacity-0'
-        }`}
-      >
+          <div
+              className={`overflow-hidden transition-all duration-500 ease-out ${isExpanded
+                      ? 'max-h-[500px] opacity-100'
+                      : 'max-h-0 opacity-0'
+                  }`}
+          >
         {isExpanded && (
           <div className="space-y-4 pt-4 border-t border-slate-700/50">
             {/* All Holdings */}

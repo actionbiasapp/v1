@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import NetWorthTracker from './NetWorthTracker';
-import EnhancedCategoryCard from './EnhancedCategoryCard';
-import SmartGrid from './SmartGrid'; // ← ADD THIS LINE
-
+import DraggablePortfolioGrid from './DraggablePortfolioGrid'; // ← FIXED: Only import what we use
 
 interface Holding {
   id: string;
@@ -152,7 +150,10 @@ export default function PortfolioDashboard() {
     const isUnder = category.gap < -2;
     const isOnTarget = Math.abs(category.gap) <= 2;
 
-    let status, statusText;
+    // FIXED: Proper TypeScript typing for status
+    let status: 'perfect' | 'underweight' | 'excess';
+    let statusText: string;
+    
     if (isOnTarget) {
       status = 'perfect';
       statusText = 'Perfect allocation';
@@ -172,7 +173,6 @@ export default function PortfolioDashboard() {
       id: category.name // Ensure unique ID
     };
   });
-
 
   // ACTION BIAS: Specific, actionable recommendations
   const actionItems: ActionItem[] = [
@@ -299,28 +299,20 @@ export default function PortfolioDashboard() {
           </div>
         </div>
 
-        {/* Enhanced Portfolio Allocation Cards - REPLACING old allocation status */}
+        {/* UPDATED: Portfolio Allocation with Drag & Drop */}
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-200 mb-4">Portfolio Allocation</h2>
-          <SmartGrid
-            expandedItems={expandedCards}
-            gap={24}
-            minCardWidth={400}
-            className="smart-grid-container"
-          >
-            {enhancedCategoryData.map((category) => (
-              <EnhancedCategoryCard
-                key={category.name}
-                category={{
-                  ...category,
-                  id: category.name // Ensure unique ID
-                }}
-                totalValue={totalValue}
-                isExpanded={expandedCards.has(category.name)}
-                onToggleExpand={handleToggleExpand}
-              />
-            ))}
-          </SmartGrid>
+          <h2 className="text-xl font-semibold text-gray-200 mb-4 flex items-center gap-2">
+            Portfolio Allocation
+            <span className="text-sm text-gray-400 bg-blue-500/10 border border-blue-500/20 rounded-full px-3 py-1">
+              ✨ Drag to reorder
+            </span>
+          </h2>
+          <DraggablePortfolioGrid
+            categories={enhancedCategoryData}
+            totalValue={totalValue}
+            expandedCards={expandedCards}
+            onToggleExpand={handleToggleExpand}
+          />
         </div>
 
         {/* Action Bias Cards */}
