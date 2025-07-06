@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import NetWorthTracker from './NetWorthTracker';
-import DraggablePortfolioGrid from './DraggablePortfolioGrid'; // ← FIXED: Only import what we use
+// UPDATED: Import new FixedPortfolioGrid instead of ReactGridLayoutPortfolio
+import FixedPortfolioGrid from './FixedPortfolioGrid';
 
 interface Holding {
   id: string;
@@ -84,6 +85,7 @@ export default function PortfolioDashboard() {
       if (newSet.has(categoryName)) {
         newSet.delete(categoryName);
       } else {
+        newSet.clear(); // Only allow one expanded at a time
         newSet.add(categoryName);
       }
       console.log('Toggling:', categoryName, 'New set:', newSet);
@@ -151,7 +153,7 @@ export default function PortfolioDashboard() {
             <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"></polyline>
           </svg>
         ),
-        color: '#3b82f6',
+        color: '#3b82f6', // Blue for Core
         description: 'Broad market index funds providing stable foundation'
       },
       Growth: {
@@ -163,7 +165,7 @@ export default function PortfolioDashboard() {
             <path d="M16.71 13.88l.7.71-2.82 2.82"></path>
           </svg>
         ),
-        color: '#10b981',
+        color: '#8b5cf6', // Purple for Growth
         description: 'Individual growth stocks and emerging technologies'
       },
       Hedge: {
@@ -172,7 +174,7 @@ export default function PortfolioDashboard() {
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
           </svg>
         ),
-        color: '#f59e0b', 
+        color: '#eab308', // Yellow for Hedge
         description: 'Alternative assets providing portfolio protection'
       },
       Liquidity: {
@@ -182,7 +184,7 @@ export default function PortfolioDashboard() {
             <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path>
           </svg>
         ),
-        color: '#64748b',
+        color: '#06b6d4', // Cyan for Liquidity
         description: 'Cash and cash equivalents for opportunities'
       }
     };
@@ -380,15 +382,12 @@ export default function PortfolioDashboard() {
           </div>
         </div>
 
-        {/* UPDATED: Portfolio Allocation with Drag & Drop */}
+        {/* UPDATED: Portfolio Allocation with Fixed Portfolio Grid */}
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-200 mb-4 flex items-center gap-2">
+          <h2 className="text-xl font-semibold text-gray-200 mb-4">
             Portfolio Allocation
-            <span className="text-sm text-gray-400 bg-blue-500/10 border border-blue-500/20 rounded-full px-3 py-1">
-              ✨ Drag to reorder
-            </span>
           </h2>
-          <DraggablePortfolioGrid
+          <FixedPortfolioGrid
             categories={enhancedCategoryData}
             totalValue={totalValue}
             expandedCards={expandedCards}
@@ -424,6 +423,7 @@ export default function PortfolioDashboard() {
   );
 }
 
+// Keep existing ActionBiasCard and AddHoldingForm components unchanged
 function ActionBiasCard({ action }: { action: ActionItem }) {
   const getTypeColor = () => {
     switch (action.type) {
