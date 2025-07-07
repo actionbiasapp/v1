@@ -1,10 +1,20 @@
 // /lib/exchangeRates.ts
-// Exchange rate fetching and caching service
+// Exchange rate fetching and caching service - CORRECTED VERSION
 
 import { PrismaClient } from '@prisma/client';
-import { fetchLiveExchangeRates, needsRateUpdate, type ExchangeRates, type CurrencyCode } from './currency';
+// FIXED: Removed unused 'needsRateUpdate' import
+import { fetchLiveExchangeRates, type ExchangeRates, type CurrencyCode } from './currency';
 
 const prisma = new PrismaClient();
+
+// FIXED: Use proper union type instead of 'any'
+interface DatabaseExchangeRate {
+  rate: number | { toString(): string };  // Handles both number and Prisma Decimal
+  createdAt: Date;
+  source: string;
+  fromCurrency: string;
+  toCurrency: string;
+}
 
 /**
  * Get current exchange rates with automatic refresh logic
@@ -24,7 +34,7 @@ export async function getCurrentExchangeRates(): Promise<ExchangeRates> {
 
     // If we have recent rates, use them
     if (recentRates.length >= 6) { // We need 6 rate pairs
-      return convertDbRatesToExchangeRates(recentRates);
+      return convertDbRatesToExchangeRates(recentRates as DatabaseExchangeRate[]);
     }
 
     // Otherwise, fetch fresh rates
@@ -43,7 +53,7 @@ export async function getCurrentExchangeRates(): Promise<ExchangeRates> {
     
     if (fallbackRates.length >= 6) {
       console.log('Using fallback cached rates');
-      return convertDbRatesToExchangeRates(fallbackRates);
+      return convertDbRatesToExchangeRates(fallbackRates as DatabaseExchangeRate[]);
     }
     
     // Ultimate fallback to default rates
@@ -140,13 +150,18 @@ export async function setManualExchangeRates(rates: ExchangeRates): Promise<void
 
 /**
  * Convert database rate records to ExchangeRates object
+ * FIXED: Proper handling of Prisma Decimal without importing the type
  */
-function convertDbRatesToExchangeRates(dbRates: any[]): ExchangeRates {
+function convertDbRatesToExchangeRates(dbRates: DatabaseExchangeRate[]): ExchangeRates {
   const rateMap: Record<string, number> = {};
   
   dbRates.forEach(rate => {
     const key = `${rate.fromCurrency}_TO_${rate.toCurrency}`;
-    rateMap[key] = Number(rate.rate);
+    // FIXED: Handle both Decimal objects and plain numbers
+    const rateValue = typeof rate.rate === 'object' && rate.rate.toString 
+      ? Number(rate.rate.toString()) 
+      : Number(rate.rate);
+    rateMap[key] = rateValue;
   });
   
   return {
@@ -184,7 +199,9 @@ export async function getExchangeRateHistory(
   });
   
   return history.map(record => ({
-    rate: Number(record.rate),
+    rate: typeof record.rate === 'object' && record.rate.toString 
+      ? Number(record.rate.toString()) 
+      : Number(record.rate), // FIXED: Handle Decimal conversion
     date: record.createdAt,
     source: record.source
   }));

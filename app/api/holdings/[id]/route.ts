@@ -3,6 +3,21 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// FIXED: Added proper TypeScript interfaces instead of 'any'
+interface UpdateHoldingData {
+  symbol?: string;
+  name?: string;
+  valueSGD?: number;
+  valueINR?: number;
+  valueUSD?: number;
+  value?: number; // Backward compatibility
+  entryCurrency?: string;
+  category?: string;
+  location?: string;
+  costBasis?: number;
+  quantity?: number;
+}
+
 // GET /api/holdings/[id] - Get individual holding
 export async function GET(
   request: NextRequest,
@@ -56,7 +71,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const body = await request.json();
+    const body: UpdateHoldingData = await request.json();
     
     const {
       symbol,
@@ -119,9 +134,21 @@ export async function PUT(
       });
     }
 
-    // Prepare update data
-    const updateData: any = {
-      symbol: symbol.toUpperCase(),
+    // Prepare update data - FIXED: Proper typing instead of 'any'
+    const updateData: {
+      symbol?: string;
+      name?: string;
+      categoryId?: string;
+      location?: string;
+      valueSGD?: number;
+      valueINR?: number;
+      valueUSD?: number;
+      entryCurrency?: string;
+      costBasis?: number;
+      quantity?: number;
+      updatedAt: Date;
+    } = {
+      symbol: symbol?.toUpperCase(),
       name,
       categoryId: categoryRecord.id,
       location,
@@ -130,10 +157,10 @@ export async function PUT(
 
     // Handle multi-currency values
     if (valueSGD !== undefined) {
-      updateData.valueSGD = valueSGD; // ✅ Fixed: use valueSGD, not currentValue
+      updateData.valueSGD = valueSGD;
     } else if (value !== undefined) {
       // Backward compatibility
-      updateData.valueSGD = value; // ✅ Fixed: use valueSGD, not currentValue
+      updateData.valueSGD = value;
     }
 
     if (valueINR !== undefined) {
@@ -168,14 +195,14 @@ export async function PUT(
     // Convert Decimal fields to numbers for JSON response
     const responseData = {
       ...updatedHolding,
-      currentValue: Number(updatedHolding.valueSGD), // ✅ Fixed: use valueSGD
+      currentValue: Number(updatedHolding.valueSGD),
       costBasis: updatedHolding.costBasis ? Number(updatedHolding.costBasis) : null,
       quantity: updatedHolding.quantity ? Number(updatedHolding.quantity) : null,
       valueSGD: updatedHolding.valueSGD ? Number(updatedHolding.valueSGD) : Number(updatedHolding.valueSGD),
       valueINR: updatedHolding.valueINR ? Number(updatedHolding.valueINR) : null,
       valueUSD: updatedHolding.valueUSD ? Number(updatedHolding.valueUSD) : null,
       // Backward compatibility
-      value: Number(updatedHolding.valueSGD), // ✅ Fixed: use valueSGD
+      value: Number(updatedHolding.valueSGD),
       category: updatedHolding.category.name
     };
 

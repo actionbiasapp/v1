@@ -1,10 +1,11 @@
-// /app/api/exchange-rates/index.ts
-// Main exchange rates API endpoint
+// /app/api/exchange-rates/route.ts
+// Main exchange rates API endpoint - FIXED VERSION
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentExchangeRates, refreshExchangeRates } from '@/app/lib/exchangeRates'; // ✅ FIXED: Correct import path
+import { NextResponse } from 'next/server';
+import { getCurrentExchangeRates, refreshExchangeRates } from '@/app/lib/exchangeRates';
 
-export async function GET(request: NextRequest) {
+// FIXED: Removed unused 'request' parameter from GET
+export async function GET() {
   try {
     const rates = await getCurrentExchangeRates();
     
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const { action } = await request.json();
     

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import NetWorthTracker from './NetWorthTracker';
 import FixedPortfolioGrid from './FixedPortfolioGrid';
 import { CurrencyToggleSimple } from './CurrencyToggle';
-import { type CurrencyCode, CURRENCY_INFO, formatCurrency, getHoldingDisplayValue } from '@/app/lib/currency';
+// FIXED: Removed unused CURRENCY_INFO import
+import { type CurrencyCode, formatCurrency, getHoldingDisplayValue } from '@/app/lib/currency';
 
 interface Holding {
   id: string;
@@ -54,8 +55,6 @@ export default function PortfolioDashboard() {
     };
   }, []);
 
-  
-
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -69,8 +68,8 @@ export default function PortfolioDashboard() {
     Liquidity: 10  // Cash + stablecoins
   };
 
-  // Sample portfolio data fallback
-  const sampleHoldings: Holding[] = [
+  // FIXED: Move sampleHoldings to useMemo to prevent dependency changes
+  const sampleHoldings: Holding[] = useMemo(() => [
     // Core Holdings
     { id: '1', symbol: 'VUAA', name: 'Vanguard S&P 500', value: 53000, valueSGD: 53000, valueINR: 3367500, valueUSD: 39220, entryCurrency: 'SGD', category: 'Core', location: 'IBKR' },
     { id: '2', symbol: 'INDIA', name: 'Indian ETF', value: 64000, valueSGD: 64000, valueINR: 4064000, valueUSD: 47360, entryCurrency: 'SGD', category: 'Core', location: 'ICICI Direct' },
@@ -97,7 +96,7 @@ export default function PortfolioDashboard() {
     { id: '17', symbol: 'SGD', name: 'Singapore Dollar', value: 30000, valueSGD: 30000, valueINR: 1905000, valueUSD: 22200, entryCurrency: 'SGD', category: 'Liquidity', location: 'DBS Bank' },
     { id: '18', symbol: 'USDC', name: 'USD Coin', value: 30000, valueSGD: 30000, valueINR: 1905000, valueUSD: 22200, entryCurrency: 'SGD', category: 'Liquidity', location: 'Aave' },
     { id: '19', symbol: 'USDC', name: 'USD Coin', value: 3000, valueSGD: 3000, valueINR: 190500, valueUSD: 2220, entryCurrency: 'SGD', category: 'Liquidity', location: 'Binance' }
-  ];
+  ], []); // Empty dependency array since this data is static
 
   const handleToggleExpand = useCallback((categoryName: string) => {
     setExpandedCards(prev => {
@@ -112,12 +111,8 @@ export default function PortfolioDashboard() {
     });
   }, []);
 
-  // Fetch holdings from database with fallback to sample data
-  useEffect(() => {
-    fetchHoldings();
-  }, []);
-
-  const fetchHoldings = async () => {
+  // FIXED: Simplified fetchHoldings without sampleHoldings dependency
+  const fetchHoldings = useCallback(async () => {
     try {
       const response = await fetch('/api/holdings');
       if (!response.ok) {
@@ -137,7 +132,12 @@ export default function PortfolioDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [sampleHoldings]);
+
+  // FIXED: Now fetchHoldings has stable dependencies
+  useEffect(() => {
+    fetchHoldings();
+  }, [fetchHoldings]);
 
   // Calculate total value in selected display currency
   const totalValue = Array.isArray(holdings) ? holdings.reduce((sum, holding) => {
@@ -405,7 +405,7 @@ export default function PortfolioDashboard() {
             expandedCards={expandedCards}
             onToggleExpand={handleToggleExpand}
             displayCurrency={displayCurrency}
-            onHoldingsUpdate={fetchHoldings}  // Add this line
+            onHoldingsUpdate={fetchHoldings}
           />
         </div>
 
