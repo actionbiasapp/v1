@@ -2,14 +2,19 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import NetWorthTracker from './NetWorthTracker';
-// UPDATED: Import new FixedPortfolioGrid instead of ReactGridLayoutPortfolio
 import FixedPortfolioGrid from './FixedPortfolioGrid';
+import { CurrencyToggleSimple } from './CurrencyToggle';
+import { type CurrencyCode, CURRENCY_INFO, formatCurrency, getHoldingDisplayValue } from '@/app/lib/currency';
 
 interface Holding {
   id: string;
   symbol: string;
   name: string;
-  value: number;
+  value: number;           // Backward compatibility (SGD)
+  valueSGD: number;        // Multi-currency values
+  valueINR: number;
+  valueUSD: number;
+  entryCurrency: string;
   category: string;
   location: string;
 }
@@ -36,12 +41,27 @@ interface ActionItem {
 }
 
 export default function PortfolioDashboard() {
+
+  // Testing focus shift bug
+  useEffect(() => {
+    const onFocusIn = (e: FocusEvent) => console.log('FOCUS IN →', e.target);
+    const onFocusOut = (e: FocusEvent) => console.log('FOCUS OUT ←', e.target);
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+    };
+  }, []);
+
+  
+
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAddForm, setShowAddForm] = useState(false);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [displayCurrency, setDisplayCurrency] = useState<CurrencyCode>('SGD');
 
-  // Updated allocation targets (80/20 growth/hedge approach)
+  // Updated allocation targets
   const targets = {
     Core: 25,      // VUAA + Indian NIFTY ETFs
     Growth: 55,    // Individual stocks + ETH + alt crypto
@@ -49,34 +69,34 @@ export default function PortfolioDashboard() {
     Liquidity: 10  // Cash + stablecoins
   };
 
-  // TEMPORARY: Sample portfolio data to restore your portfolio
+  // Sample portfolio data fallback
   const sampleHoldings: Holding[] = [
     // Core Holdings
-    { id: '1', symbol: 'VUAA', name: 'Vanguard S&P 500', value: 53000, category: 'Core', location: 'IBKR' },
-    { id: '2', symbol: 'INDIA', name: 'Indian ETF', value: 64000, category: 'Core', location: 'ICICI Direct' },
+    { id: '1', symbol: 'VUAA', name: 'Vanguard S&P 500', value: 53000, valueSGD: 53000, valueINR: 3367500, valueUSD: 39220, entryCurrency: 'SGD', category: 'Core', location: 'IBKR' },
+    { id: '2', symbol: 'INDIA', name: 'Indian ETF', value: 64000, valueSGD: 64000, valueINR: 4064000, valueUSD: 47360, entryCurrency: 'SGD', category: 'Core', location: 'ICICI Direct' },
     
     // Growth Holdings
-    { id: '3', symbol: 'NVDA', name: 'NVIDIA Corporation', value: 20000, category: 'Growth', location: 'IBKR' },
-    { id: '4', symbol: 'GOOG', name: 'Alphabet Inc', value: 18000, category: 'Growth', location: 'IBKR' },
-    { id: '5', symbol: 'TSLA', name: 'Tesla Inc', value: 18000, category: 'Growth', location: 'IBKR' },
-    { id: '6', symbol: 'IREN', name: 'Iris Energy', value: 4000, category: 'Growth', location: 'IBKR' },
-    { id: '7', symbol: 'HIMS', name: 'Hims & Hers Health', value: 15000, category: 'Growth', location: 'IBKR' },
-    { id: '8', symbol: 'UNH', name: 'UnitedHealth Group', value: 12000, category: 'Growth', location: 'IBKR' },
-    { id: '9', symbol: 'AAPL', name: 'Apple Inc', value: 25000, category: 'Growth', location: 'IBKR' },
-    { id: '10', symbol: 'AMGN', name: 'Amgen Inc', value: 8000, category: 'Growth', location: 'IBKR' },
-    { id: '11', symbol: 'CRM', name: 'Salesforce', value: 6000, category: 'Growth', location: 'IBKR' },
-    { id: '12', symbol: 'ETH', name: 'Ethereum', value: 48000, category: 'Growth', location: 'CoinGecko' },
+    { id: '3', symbol: 'NVDA', name: 'NVIDIA Corporation', value: 20000, valueSGD: 20000, valueINR: 1270000, valueUSD: 14800, entryCurrency: 'SGD', category: 'Growth', location: 'IBKR' },
+    { id: '4', symbol: 'GOOG', name: 'Alphabet Inc', value: 18000, valueSGD: 18000, valueINR: 1143000, valueUSD: 13320, entryCurrency: 'SGD', category: 'Growth', location: 'IBKR' },
+    { id: '5', symbol: 'TSLA', name: 'Tesla Inc', value: 18000, valueSGD: 18000, valueINR: 1143000, valueUSD: 13320, entryCurrency: 'SGD', category: 'Growth', location: 'IBKR' },
+    { id: '6', symbol: 'IREN', name: 'Iris Energy', value: 4000, valueSGD: 4000, valueINR: 254000, valueUSD: 2960, entryCurrency: 'SGD', category: 'Growth', location: 'IBKR' },
+    { id: '7', symbol: 'HIMS', name: 'Hims & Hers Health', value: 15000, valueSGD: 15000, valueINR: 952500, valueUSD: 11100, entryCurrency: 'SGD', category: 'Growth', location: 'IBKR' },
+    { id: '8', symbol: 'UNH', name: 'UnitedHealth Group', value: 12000, valueSGD: 12000, valueINR: 762000, valueUSD: 8880, entryCurrency: 'SGD', category: 'Growth', location: 'IBKR' },
+    { id: '9', symbol: 'AAPL', name: 'Apple Inc', value: 25000, valueSGD: 25000, valueINR: 1587500, valueUSD: 18500, entryCurrency: 'SGD', category: 'Growth', location: 'IBKR' },
+    { id: '10', symbol: 'AMGN', name: 'Amgen Inc', value: 8000, valueSGD: 8000, valueINR: 508000, valueUSD: 5920, entryCurrency: 'SGD', category: 'Growth', location: 'IBKR' },
+    { id: '11', symbol: 'CRM', name: 'Salesforce', value: 6000, valueSGD: 6000, valueINR: 381000, valueUSD: 4440, entryCurrency: 'SGD', category: 'Growth', location: 'IBKR' },
+    { id: '12', symbol: 'ETH', name: 'Ethereum', value: 48000, valueSGD: 48000, valueINR: 3048000, valueUSD: 35520, entryCurrency: 'SGD', category: 'Growth', location: 'CoinGecko' },
     
     // Hedge Holdings
-    { id: '13', symbol: 'BTC', name: 'Bitcoin', value: 58000, category: 'Hedge', location: 'CoinGecko' },
-    { id: '14', symbol: 'WBTC', name: 'Wrapped Bitcoin', value: 17000, category: 'Hedge', location: 'CoinGecko' },
-    { id: '15', symbol: 'GOLD', name: 'Physical Gold', value: 14000, category: 'Hedge', location: 'Physical' },
+    { id: '13', symbol: 'BTC', name: 'Bitcoin', value: 58000, valueSGD: 58000, valueINR: 3683000, valueUSD: 42920, entryCurrency: 'SGD', category: 'Hedge', location: 'CoinGecko' },
+    { id: '14', symbol: 'WBTC', name: 'Wrapped Bitcoin', value: 17000, valueSGD: 17000, valueINR: 1079500, valueUSD: 12580, entryCurrency: 'SGD', category: 'Hedge', location: 'CoinGecko' },
+    { id: '15', symbol: 'GOLD', name: 'Physical Gold', value: 14000, valueSGD: 14000, valueINR: 889000, valueUSD: 10360, entryCurrency: 'SGD', category: 'Hedge', location: 'Physical' },
     
     // Liquidity Holdings
-    { id: '16', symbol: 'SGD', name: 'Singapore Dollar', value: 44000, category: 'Liquidity', location: 'Standard Chartered' },
-    { id: '17', symbol: 'SGD', name: 'Singapore Dollar', value: 30000, category: 'Liquidity', location: 'DBS Bank' },
-    { id: '18', symbol: 'USDC', name: 'USD Coin', value: 30000, category: 'Liquidity', location: 'Aave' },
-    { id: '19', symbol: 'USDC', name: 'USD Coin', value: 3000, category: 'Liquidity', location: 'Binance' }
+    { id: '16', symbol: 'SGD', name: 'Singapore Dollar', value: 44000, valueSGD: 44000, valueINR: 2794000, valueUSD: 32560, entryCurrency: 'SGD', category: 'Liquidity', location: 'Standard Chartered' },
+    { id: '17', symbol: 'SGD', name: 'Singapore Dollar', value: 30000, valueSGD: 30000, valueINR: 1905000, valueUSD: 22200, entryCurrency: 'SGD', category: 'Liquidity', location: 'DBS Bank' },
+    { id: '18', symbol: 'USDC', name: 'USD Coin', value: 30000, valueSGD: 30000, valueINR: 1905000, valueUSD: 22200, entryCurrency: 'SGD', category: 'Liquidity', location: 'Aave' },
+    { id: '19', symbol: 'USDC', name: 'USD Coin', value: 3000, valueSGD: 3000, valueINR: 190500, valueUSD: 2220, entryCurrency: 'SGD', category: 'Liquidity', location: 'Binance' }
   ];
 
   const handleToggleExpand = useCallback((categoryName: string) => {
@@ -88,7 +108,6 @@ export default function PortfolioDashboard() {
         newSet.clear(); // Only allow one expanded at a time
         newSet.add(categoryName);
       }
-      console.log('Toggling:', categoryName, 'New set:', newSet);
       return newSet;
     });
   }, []);
@@ -110,24 +129,27 @@ export default function PortfolioDashboard() {
         setHoldings(data);
       } else {
         console.warn('API returned empty data, using sample portfolio');
-        setHoldings(sampleHoldings); // Use sample data as fallback
+        setHoldings(sampleHoldings);
       }
     } catch (error) {
       console.error('Error fetching holdings, using sample data:', error);
-      setHoldings(sampleHoldings); // Use sample data as fallback
+      setHoldings(sampleHoldings);
     } finally {
       setLoading(false);
     }
   };
 
-  // Safe calculation with fallback for empty holdings
-  const totalValue = Array.isArray(holdings) ? holdings.reduce((sum, holding) => sum + holding.value, 0) : 0;
+  // Calculate total value in selected display currency
+  const totalValue = Array.isArray(holdings) ? holdings.reduce((sum, holding) => {
+    return sum + getHoldingDisplayValue(holding, displayCurrency);
+  }, 0) : 0;
+
   const firstMillionProgress = (totalValue / 1000000) * 100;
   
-  // Group holdings by category with safe array handling
+  // Group holdings by category with multi-currency support
   const categoryData: CategoryData[] = Object.entries(targets).map(([categoryName, target]) => {
     const categoryHoldings = Array.isArray(holdings) ? holdings.filter(h => h.category === categoryName) : [];
-    const currentValue = categoryHoldings.reduce((sum, h) => sum + h.value, 0);
+    const currentValue = categoryHoldings.reduce((sum, h) => sum + getHoldingDisplayValue(h, displayCurrency), 0);
     const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
     const gap = currentPercent - target;
     const targetValue = (target / 100) * totalValue;
@@ -153,7 +175,7 @@ export default function PortfolioDashboard() {
             <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"></polyline>
           </svg>
         ),
-        color: '#3b82f6', // Blue for Core
+        color: '#3b82f6',
         description: 'Broad market index funds providing stable foundation'
       },
       Growth: {
@@ -165,7 +187,7 @@ export default function PortfolioDashboard() {
             <path d="M16.71 13.88l.7.71-2.82 2.82"></path>
           </svg>
         ),
-        color: '#8b5cf6', // Purple for Growth
+        color: '#8b5cf6',
         description: 'Individual growth stocks and emerging technologies'
       },
       Hedge: {
@@ -174,7 +196,7 @@ export default function PortfolioDashboard() {
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
           </svg>
         ),
-        color: '#eab308', // Yellow for Hedge
+        color: '#eab308',
         description: 'Alternative assets providing portfolio protection'
       },
       Liquidity: {
@@ -184,7 +206,7 @@ export default function PortfolioDashboard() {
             <path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path>
           </svg>
         ),
-        color: '#06b6d4', // Cyan for Liquidity
+        color: '#06b6d4',
         description: 'Cash and cash equivalents for opportunities'
       }
     };
@@ -193,7 +215,6 @@ export default function PortfolioDashboard() {
     const isUnder = category.gap < -2;
     const isOnTarget = Math.abs(category.gap) <= 2;
 
-    // FIXED: Proper TypeScript typing for status
     let status: 'perfect' | 'underweight' | 'excess';
     let statusText: string;
     
@@ -202,10 +223,10 @@ export default function PortfolioDashboard() {
       statusText = 'Perfect allocation';
     } else if (isUnder) {
       status = 'underweight';
-      statusText = `Add ${Math.abs(category.gapAmount / 1000).toFixed(0)}k needed`;
+      statusText = `Add ${formatCurrency(Math.abs(category.gapAmount), displayCurrency, { compact: true })} needed`;
     } else {
       status = 'excess';
-      statusText = `Trim ${Math.abs(category.gapAmount / 1000).toFixed(0)}k excess`;
+      statusText = `Trim ${formatCurrency(Math.abs(category.gapAmount), displayCurrency, { compact: true })} excess`;
     }
 
     return {
@@ -213,7 +234,7 @@ export default function PortfolioDashboard() {
       ...config,
       status,
       statusText,
-      id: category.name // Ensure unique ID
+      id: category.name
     };
   });
 
@@ -232,8 +253,8 @@ export default function PortfolioDashboard() {
     {
       id: 'core-gap',
       type: 'opportunity', 
-      problem: 'Core underweight by $4k',
-      solution: 'Transfer $4k from cash → Buy more VUAA or Indian ETFs',
+      problem: 'Core underweight by 4k',
+      solution: 'Transfer from cash → Buy more VUAA or Indian ETFs',
       benefit: 'Reach target allocation, earn 7%/year',
       urgency: 'Execute this week',
       actionText: 'Transfer & Buy',
@@ -243,22 +264,13 @@ export default function PortfolioDashboard() {
       id: 'growth-rebalance',
       type: 'optimization',
       problem: 'Growth slightly overweight',
-      solution: 'Consider trimming $20k from top performers when rebalancing',
+      solution: 'Consider trimming from top performers when rebalancing',
       benefit: 'Maintain optimal risk balance',
       urgency: 'Next quarterly review',
       actionText: 'Plan Rebalance',
       isClickable: false
     }
   ];
-
-  const addHolding = (holding: Omit<Holding, 'id'>) => {
-    setHoldings(prev => {
-      // Ensure prev is an array
-      const currentHoldings = Array.isArray(prev) ? prev : [];
-      return [...currentHoldings, { ...holding, id: Date.now().toString() }];
-    });
-    setShowAddForm(false);
-  };
 
   if (loading) {
     return (
@@ -278,27 +290,13 @@ export default function PortfolioDashboard() {
           <div className="bg-gray-800 rounded-lg p-8 text-center border border-gray-700">
             <h2 className="text-xl font-semibold text-gray-200 mb-4">API Connection Issue</h2>
             <p className="text-gray-400 mb-6">Unable to connect to database. Please check your API endpoint or refresh the page.</p>
-            <div className="flex gap-4 justify-center">
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
-              >
-                Refresh Page
-              </button>
-              <button
-                onClick={() => setShowAddForm(true)}
-                className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
-              >
-                Add Holdings Manually
-              </button>
-            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
+            >
+              Refresh Page
+            </button>
           </div>
-
-          {showAddForm && (
-            <div className="mt-6">
-              <AddHoldingForm onAdd={addHolding} onCancel={() => setShowAddForm(false)} />
-            </div>
-          )}
         </div>
       </div>
     );
@@ -307,9 +305,15 @@ export default function PortfolioDashboard() {
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold text-white mb-6">Action Bias Portfolio</h1>
-
-        <NetWorthTracker />
+        {/* Header with Currency Switcher */}
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-white">Action Bias Portfolio</h1>
+          
+          <CurrencyToggleSimple 
+            displayCurrency={displayCurrency}
+            onCurrencyChange={setDisplayCurrency}
+          />
+        </div>
         
         {/* Portfolio Header with Metrics */}
         <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
@@ -317,15 +321,21 @@ export default function PortfolioDashboard() {
             {/* Left: Portfolio Metrics */}
             <div className="flex gap-8">
               <div>
-                <p className="text-4xl font-bold text-green-400">${totalValue.toLocaleString()}</p>
+                <p className="text-4xl font-bold text-green-400">
+                  {formatCurrency(totalValue, displayCurrency, { compact: false, precision: 0 })}
+                </p>
                 <p className="text-sm text-gray-400">Portfolio Value</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-blue-400">$350,000</p>
+                <p className="text-2xl font-bold text-blue-400">
+                  {formatCurrency(350000, displayCurrency, { compact: false, precision: 0 })}
+                </p>
                 <p className="text-sm text-gray-400">Total Savings</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-purple-400">$136,810</p>
+                <p className="text-2xl font-bold text-purple-400">
+                  {formatCurrency(totalValue - 350000, displayCurrency, { compact: false, precision: 0 })}
+                </p>
                 <p className="text-sm text-gray-400">Total Gains</p>
               </div>
               <div>
@@ -367,22 +377,24 @@ export default function PortfolioDashboard() {
               </div>
               
               <div className="flex justify-between text-xs text-gray-500 mb-1">
-                <span>$0</span>
-                <span>$1M</span>
-                <span>$1.85M (Lean)</span>
-                <span>$2.5M (Full FI)</span>
+                <span>0</span>
+                <span>1M</span>
+                <span>1.85M (Lean)</span>
+                <span>2.5M (Full FI)</span>
               </div>
               
               <div className="text-right">
                 <p className="text-sm text-gray-400">
-                  ${(1000000 - totalValue).toLocaleString()} to first milestone
+                  {formatCurrency(1000000 - totalValue, displayCurrency, { compact: true })} to first milestone
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* UPDATED: Portfolio Allocation with Fixed Portfolio Grid */}
+        <NetWorthTracker />
+
+        {/* Portfolio Allocation with Fixed Portfolio Grid */}
         <div className="mb-6">
           <h2 className="text-xl font-semibold text-gray-200 mb-4">
             Portfolio Allocation
@@ -392,6 +404,8 @@ export default function PortfolioDashboard() {
             totalValue={totalValue}
             expandedCards={expandedCards}
             onToggleExpand={handleToggleExpand}
+            displayCurrency={displayCurrency}
+            onHoldingsUpdate={fetchHoldings}  // Add this line
           />
         </div>
 
@@ -401,29 +415,12 @@ export default function PortfolioDashboard() {
             <ActionBiasCard key={action.id} action={action} />
           ))}
         </div>
-
-        {/* Add Holding */}
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-200">Add Holdings</h2>
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Add Holding
-            </button>
-          </div>
-
-          {showAddForm && (
-            <AddHoldingForm onAdd={addHolding} onCancel={() => setShowAddForm(false)} />
-          )}
-        </div>
       </div>
     </div>
   );
 }
 
-// Keep existing ActionBiasCard and AddHoldingForm components unchanged
+// Keep existing ActionBiasCard component unchanged
 function ActionBiasCard({ action }: { action: ActionItem }) {
   const getTypeColor = () => {
     switch (action.type) {
@@ -484,90 +481,5 @@ function ActionBiasCard({ action }: { action: ActionItem }) {
         </div>
       )}
     </div>
-  );
-}
-
-function AddHoldingForm({ onAdd, onCancel }: { onAdd: (holding: Omit<Holding, 'id'>) => void; onCancel: () => void }) {
-  const [formData, setFormData] = useState({
-    symbol: '',
-    name: '',
-    value: '',
-    category: 'Core',
-    location: 'IBKR'
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onAdd({
-      symbol: formData.symbol,
-      name: formData.name,
-      value: parseFloat(formData.value),
-      category: formData.category,
-      location: formData.location
-    });
-    setFormData({ symbol: '', name: '', value: '', category: 'Core', location: 'IBKR' });
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="bg-gray-700 p-4 rounded-lg border border-gray-600">
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <input
-          type="text"
-          placeholder="Symbol"
-          value={formData.symbol}
-          onChange={(e) => setFormData({ ...formData, symbol: e.target.value })}
-          className="bg-gray-600 text-white border border-gray-500 rounded px-3 py-2 placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-          required
-        />
-        <input
-          type="text"
-          placeholder="Name"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          className="bg-gray-600 text-white border border-gray-500 rounded px-3 py-2 placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-          required
-        />
-        <input
-          type="number"
-          placeholder="Value (SGD)"
-          value={formData.value}
-          onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-          className="bg-gray-600 text-white border border-gray-500 rounded px-3 py-2 placeholder-gray-400 focus:border-blue-500 focus:outline-none"
-          required
-        />
-        <select
-          value={formData.category}
-          onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-          className="bg-gray-600 text-white border border-gray-500 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
-        >
-          <option value="Core">Core</option>
-          <option value="Growth">Growth</option>
-          <option value="Hedge">Hedge</option>
-          <option value="Liquidity">Liquidity</option>
-        </select>
-        <select
-          value={formData.location}
-          onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-          className="bg-gray-600 text-white border border-gray-500 rounded px-3 py-2 focus:border-blue-500 focus:outline-none"
-        >
-          <option value="IBKR">IBKR</option>
-          <option value="CoinGecko">CoinGecko</option>
-          <option value="DBS Bank">DBS Bank</option>
-          <option value="Standard Chartered">Standard Chartered</option>
-          <option value="Binance">Binance</option>
-          <option value="Aave">Aave</option>
-          <option value="Physical">Physical</option>
-          <option value="ICICI Direct">ICICI Direct</option>
-        </select>
-      </div>
-      <div className="flex gap-2 mt-4">
-        <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors">
-          Add
-        </button>
-        <button type="button" onClick={onCancel} className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors">
-          Cancel
-        </button>
-      </div>
-    </form>
   );
 }

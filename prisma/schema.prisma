@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,47 +8,64 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String
-  country      String   @default("Singapore")
-  taxStatus    String   @default("Employment Pass")
-  srsLimit     Decimal  @default(35700)
-  fiGoal       Decimal  @default(2500000)
-  fiTargetYear Int      @default(2032)
-  createdAt    DateTime @default(now())
-  
-  holdings     Holdings[]
-  categories   AssetCategory[]
+  id              String           @id @default(cuid())
+  email           String           @unique
+  name            String
+  country         String           @default("Singapore")
+  taxStatus       String           @default("Employment Pass")
+  srsLimit        Decimal          @default(35700)
+  fiGoal          Decimal          @default(2500000)
+  fiTargetYear    Int              @default(2032)
+  createdAt       DateTime         @default(now())
+  categories      AssetCategory[]
+  holdings        Holdings[]
   recommendations Recommendation[]
 }
 
 model AssetCategory {
-  id               String   @id @default(cuid())
+  id               String     @id @default(cuid())
   userId           String
-  name             String   // 'Core', 'Growth', 'Hedge', 'Liquidity'
-  targetPercentage Decimal  // 25, 15, 18, 22
+  name             String
+  targetPercentage Decimal
   description      String?
-  
-  user     User       @relation(fields: [userId], references: [id])
-  holdings Holdings[]
+  user             User       @relation(fields: [userId], references: [id])
+  holdings         Holdings[]
 }
 
 model Holdings {
-  id           String   @id @default(cuid())
+  id           String        @id @default(cuid())
   userId       String
   categoryId   String
   symbol       String
   name         String
   quantity     Decimal?
-  currentValue Decimal
-  costBasis    Decimal?
-  location     String   // 'IBKR', 'CoinGecko', 'DBS Bank', etc.
-  currency     String   @default("SGD")
-  updatedAt    DateTime @default(now())
   
-  user     User          @relation(fields: [userId], references: [id])
-  category AssetCategory @relation(fields: [categoryId], references: [id])
+  // Multi-currency storage - store all three values
+  valueSGD     Decimal       // Primary portfolio currency
+  valueINR     Decimal       // Converted INR value  
+  valueUSD     Decimal       // Converted USD value
+  entryCurrency String       @default("SGD") // Original entry currency
+  
+  costBasis    Decimal?
+  location     String
+  updatedAt    DateTime      @default(now())
+  
+  category     AssetCategory @relation(fields: [categoryId], references: [id])
+  user         User          @relation(fields: [userId], references: [id])
+}
+
+model ExchangeRate {
+  id           String   @id @default(cuid())
+  fromCurrency String   // SGD, INR, USD
+  toCurrency   String   // SGD, INR, USD  
+  rate         Decimal  // Exchange rate value
+  source       String   @default("api") // 'api' or 'manual'
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@unique([fromCurrency, toCurrency])
+  @@index([fromCurrency, toCurrency, updatedAt])
 }
 
 model Recommendation {
@@ -63,6 +77,5 @@ model Recommendation {
   priority     Int      @default(1)
   completed    Boolean  @default(false)
   createdAt    DateTime @default(now())
-  
-  user User @relation(fields: [userId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
 }

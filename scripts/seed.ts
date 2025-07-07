@@ -88,9 +88,20 @@ async function main() {
     { symbol: 'USDC', name: 'USD Coin', value: 3027, category: 'Liquidity', location: 'Binance' },
   ];
 
-  // Insert holdings
+  // Exchange rates for conversion (approximate)
+  const RATES = {
+    SGD_TO_USD: 0.74,
+    SGD_TO_INR: 63.50
+  };
+
+  // Insert holdings with multi-currency values
   for (const holding of holdings) {
     const categoryRecord = categories.find(c => c.name === holding.category);
+    
+    // Convert SGD values to all currencies
+    const valueSGD = holding.value;
+    const valueUSD = valueSGD * RATES.SGD_TO_USD;
+    const valueINR = valueSGD * RATES.SGD_TO_INR;
     
     await prisma.holdings.create({
       data: {
@@ -98,9 +109,11 @@ async function main() {
         categoryId: categoryRecord!.id,
         symbol: holding.symbol,
         name: holding.name,
-        currentValue: holding.value,
+        valueSGD: valueSGD,        // ✅ FIXED: Use correct schema fields
+        valueINR: valueINR,        // ✅ FIXED: Add multi-currency values
+        valueUSD: valueUSD,        // ✅ FIXED: Add multi-currency values
+        entryCurrency: 'SGD',      // ✅ FIXED: Add entry currency
         location: holding.location,
-        currency: 'SGD',
       },
     });
   }
