@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import NetWorthTracker from './NetWorthTracker';
 import FixedPortfolioGrid from './FixedPortfolioGrid';
 import { CurrencyToggleSimple } from './CurrencyToggle';
-// FIXED: Removed unused CURRENCY_INFO import
 import { type CurrencyCode, formatCurrency, getHoldingDisplayValue } from '@/app/lib/currency';
 
 interface Holding {
@@ -28,18 +27,50 @@ interface CategoryData {
   target: number;
   gap: number;
   gapAmount: number;
+  status: 'perfect' | 'underweight' | 'excess';
+  statusText: string;
+  callout?: string;
 }
 
 interface ActionItem {
   id: string;
   type: 'urgent' | 'opportunity' | 'optimization';
-  problem: string;
-  solution: string;
-  benefit: string;
-  urgency: string;
+  problem?: string;        // For static items
+  solution?: string;       // For static items  
+  benefit?: string;        // For static items
+  urgency?: string;        // For static items
+  title?: string;          // For intelligence items
+  description?: string;    // For intelligence items
+  dollarImpact?: number;   // For intelligence items
+  timeline?: string;       // For intelligence items
   actionText: string;
   isClickable: boolean;
+  priority?: number;
 }
+
+interface IntelligenceReport {
+  statusIntelligence: {
+    fiProgress: string;
+    urgentAction: string;
+    deadline: string | null;
+    netWorth: number;
+  };
+  allocationIntelligence: Array<{
+    name: string;
+    status: 'perfect' | 'underweight' | 'excess';
+    callout: string;
+    priority: number;
+  }>;
+  actionIntelligence: ActionItem[];
+}
+
+// Live indicator component
+const LiveIndicator = () => (
+  <div className="flex items-center gap-1">
+    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+    <span className="text-xs text-green-400">Live</span>
+  </div>
+);
 
 export default function PortfolioDashboard() {
 
@@ -59,6 +90,11 @@ export default function PortfolioDashboard() {
   const [loading, setLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [displayCurrency, setDisplayCurrency] = useState<CurrencyCode>('SGD');
+  
+  // Intelligence state
+  const [intelligence, setIntelligence] = useState<IntelligenceReport | null>(null);
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+  const [isIntelligenceLive, setIsIntelligenceLive] = useState(false);
 
   // Updated allocation targets
   const targets = {
@@ -68,7 +104,7 @@ export default function PortfolioDashboard() {
     Liquidity: 10  // Cash + stablecoins
   };
 
-  // FIXED: Move sampleHoldings to useMemo to prevent dependency changes
+  // Sample holdings (moved to useMemo)
   const sampleHoldings: Holding[] = useMemo(() => [
     // Core Holdings
     { id: '1', symbol: 'VUAA', name: 'Vanguard S&P 500', value: 53000, valueSGD: 53000, valueINR: 3367500, valueUSD: 39220, entryCurrency: 'SGD', category: 'Core', location: 'IBKR' },
@@ -96,7 +132,36 @@ export default function PortfolioDashboard() {
     { id: '17', symbol: 'SGD', name: 'Singapore Dollar', value: 30000, valueSGD: 30000, valueINR: 1905000, valueUSD: 22200, entryCurrency: 'SGD', category: 'Liquidity', location: 'DBS Bank' },
     { id: '18', symbol: 'USDC', name: 'USD Coin', value: 30000, valueSGD: 30000, valueINR: 1905000, valueUSD: 22200, entryCurrency: 'SGD', category: 'Liquidity', location: 'Aave' },
     { id: '19', symbol: 'USDC', name: 'USD Coin', value: 3000, valueSGD: 3000, valueINR: 190500, valueUSD: 2220, entryCurrency: 'SGD', category: 'Liquidity', location: 'Binance' }
-  ], []); // Empty dependency array since this data is static
+  ], []);
+
+  // Fetch intelligence from API
+  const fetchIntelligence = useCallback(async () => {
+    if (holdings.length === 0) return; // Wait for holdings first
+    
+    setIntelligenceLoading(true);
+    try {
+      const response = await fetch('/api/intelligence');
+      if (!response.ok) {
+        throw new Error(`Intelligence API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.intelligence) {
+        setIntelligence(data.intelligence);
+        setIsIntelligenceLive(true);
+        console.log('✅ Live intelligence loaded:', data.intelligence);
+      } else {
+        throw new Error('Intelligence API returned invalid data');
+      }
+    } catch (error) {
+      console.warn('Intelligence API failed, using fallback:', error);
+      setIsIntelligenceLive(false);
+      // Keep intelligence as null to use fallback
+    } finally {
+      setIntelligenceLoading(false);
+    }
+  }, [holdings.length]);
 
   const handleToggleExpand = useCallback((categoryName: string) => {
     setExpandedCards(prev => {
@@ -111,7 +176,6 @@ export default function PortfolioDashboard() {
     });
   }, []);
 
-  // FIXED: Simplified fetchHoldings without sampleHoldings dependency
   const fetchHoldings = useCallback(async () => {
     try {
       const response = await fetch('/api/holdings');
@@ -119,7 +183,6 @@ export default function PortfolioDashboard() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const data = await response.json();
-      // Ensure data is an array
       if (Array.isArray(data) && data.length > 0) {
         setHoldings(data);
       } else {
@@ -134,17 +197,26 @@ export default function PortfolioDashboard() {
     }
   }, [sampleHoldings]);
 
-  // FIXED: Now fetchHoldings has stable dependencies
+  // Fetch holdings on mount
   useEffect(() => {
     fetchHoldings();
   }, [fetchHoldings]);
+
+  // Fetch intelligence when holdings are loaded
+  useEffect(() => {
+    if (holdings.length > 0) {
+      fetchIntelligence();
+    }
+  }, [holdings.length, fetchIntelligence]);
 
   // Calculate total value in selected display currency
   const totalValue = Array.isArray(holdings) ? holdings.reduce((sum, holding) => {
     return sum + getHoldingDisplayValue(holding, displayCurrency);
   }, 0) : 0;
 
-  const firstMillionProgress = (totalValue / 1000000) * 100;
+  // Use intelligence FI progress or calculate fallback
+  const fiProgressText = intelligence?.statusIntelligence?.fiProgress || 
+    `${((totalValue / 1000000) * 100).toFixed(1)}% to first million`;
   
   // Group holdings by category with multi-currency support
   const categoryData: CategoryData[] = Object.entries(targets).map(([categoryName, target]) => {
@@ -155,6 +227,33 @@ export default function PortfolioDashboard() {
     const targetValue = (target / 100) * totalValue;
     const gapAmount = currentValue - targetValue;
 
+    // Get intelligence callout if available
+    const intelligenceData = intelligence?.allocationIntelligence?.find(intel => intel.name === categoryName);
+    
+    // Determine status
+    let status: 'perfect' | 'underweight' | 'excess';
+    let statusText: string;
+    
+    if (intelligenceData) {
+      status = intelligenceData.status;
+      statusText = intelligenceData.callout;
+    } else {
+      // Fallback logic
+      const isOnTarget = Math.abs(gap) <= 2;
+      const isUnder = gap < -2;
+      
+      if (isOnTarget) {
+        status = 'perfect';
+        statusText = 'Perfect allocation';
+      } else if (isUnder) {
+        status = 'underweight';
+        statusText = `Add ${formatCurrency(Math.abs(gapAmount), displayCurrency, { compact: true })} needed`;
+      } else {
+        status = 'excess';
+        statusText = `Trim ${formatCurrency(Math.abs(gapAmount), displayCurrency, { compact: true })} excess`;
+      }
+    }
+
     return {
       name: categoryName,
       holdings: categoryHoldings,
@@ -162,7 +261,10 @@ export default function PortfolioDashboard() {
       currentPercent,
       target,
       gap,
-      gapAmount
+      gapAmount,
+      status,
+      statusText,
+      callout: intelligenceData?.callout
     };
   });
 
@@ -212,34 +314,27 @@ export default function PortfolioDashboard() {
     };
 
     const config = categoryConfig[category.name as keyof typeof categoryConfig];
-    const isUnder = category.gap < -2;
-    const isOnTarget = Math.abs(category.gap) <= 2;
-
-    let status: 'perfect' | 'underweight' | 'excess';
-    let statusText: string;
-    
-    if (isOnTarget) {
-      status = 'perfect';
-      statusText = 'Perfect allocation';
-    } else if (isUnder) {
-      status = 'underweight';
-      statusText = `Add ${formatCurrency(Math.abs(category.gapAmount), displayCurrency, { compact: true })} needed`;
-    } else {
-      status = 'excess';
-      statusText = `Trim ${formatCurrency(Math.abs(category.gapAmount), displayCurrency, { compact: true })} excess`;
-    }
 
     return {
       ...category,
       ...config,
-      status,
-      statusText,
       id: category.name
     };
   });
 
-  // ACTION BIAS: Specific, actionable recommendations
-  const actionItems: ActionItem[] = [
+  // Dynamic action items - use intelligence or fallback
+  const actionItems: ActionItem[] = intelligence?.actionIntelligence?.map(action => ({
+    id: action.id,
+    type: action.type,
+    title: action.title,
+    description: action.description,
+    dollarImpact: action.dollarImpact,
+    timeline: action.timeline,
+    actionText: action.actionText,
+    isClickable: true,
+    priority: action.priority
+  })) || [
+    // Fallback static actions
     {
       id: 'srs',
       type: 'urgent',
@@ -305,9 +400,12 @@ export default function PortfolioDashboard() {
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4">
       <div className="max-w-6xl mx-auto">
-        {/* Header with Currency Switcher */}
+        {/* Header with Currency Switcher and Intelligence Status */}
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-white">Action Bias Portfolio</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-white">Action Bias Portfolio</h1>
+            {isIntelligenceLive && <LiveIndicator />}
+          </div>
           
           <CurrencyToggleSimple 
             displayCurrency={displayCurrency}
@@ -315,7 +413,7 @@ export default function PortfolioDashboard() {
           />
         </div>
         
-        {/* Portfolio Header with Metrics */}
+        {/* Portfolio Header with Intelligent Metrics */}
         <div className="bg-gray-800 rounded-lg p-6 mb-6 border border-gray-700">
           <div className="flex justify-between items-start mb-6">
             {/* Left: Portfolio Metrics */}
@@ -338,9 +436,22 @@ export default function PortfolioDashboard() {
                 </p>
                 <p className="text-sm text-gray-400">Total Gains</p>
               </div>
-              <div>
-                <p className="text-2xl font-bold text-blue-400">{firstMillionProgress.toFixed(1)}%</p>
-                <p className="text-sm text-gray-400">of First Million</p>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <p className="text-2xl font-bold text-blue-400">{fiProgressText}</p>
+                  {isIntelligenceLive && <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>}
+                </div>
+                <p className="text-sm text-gray-400">FI Progress</p>
+                {intelligence?.statusIntelligence?.urgentAction && (
+                  <p className="text-xs text-orange-300 mt-1">
+                    Next: {intelligence.statusIntelligence.urgentAction}
+                  </p>
+                )}
+                {intelligence?.statusIntelligence?.deadline && (
+                  <p className="text-xs text-red-300 mt-1">
+                    Deadline: {intelligence.statusIntelligence.deadline}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -349,7 +460,7 @@ export default function PortfolioDashboard() {
               <div className="relative bg-gray-700 rounded-full h-4 mb-2">
                 <div 
                   className="absolute h-4 bg-gradient-to-r from-blue-500 to-blue-400 rounded-l-full"
-                  style={{ width: `${Math.min(firstMillionProgress, 100) * 0.4}%` }}
+                  style={{ width: `${Math.min(((totalValue / 1000000) * 100), 100) * 0.4}%` }}
                 />
                 
                 {totalValue > 1000000 && (
@@ -396,9 +507,17 @@ export default function PortfolioDashboard() {
 
         {/* Portfolio Allocation with Fixed Portfolio Grid */}
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-200 mb-4">
-            Portfolio Allocation
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-200">
+              Portfolio Allocation
+            </h2>
+            {isIntelligenceLive && (
+              <div className="flex items-center gap-2 text-sm text-green-400">
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                <span>Smart Analysis Active</span>
+              </div>
+            )}
+          </div>
           <FixedPortfolioGrid
             categories={enhancedCategoryData}
             totalValue={totalValue}
@@ -409,19 +528,25 @@ export default function PortfolioDashboard() {
           />
         </div>
 
-        {/* Action Bias Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {actionItems.map(action => (
-            <ActionBiasCard key={action.id} action={action} />
-          ))}
+        {/* Dynamic Action Bias Cards */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-200">Recommended Actions</h2>
+            {isIntelligenceLive && <LiveIndicator />}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {actionItems.slice(0, 3).map(action => (
+              <ActionBiasCard key={action.id} action={action} isLive={isIntelligenceLive} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// Keep existing ActionBiasCard component unchanged
-function ActionBiasCard({ action }: { action: ActionItem }) {
+// Enhanced ActionBiasCard with live indicator
+function ActionBiasCard({ action, isLive }: { action: ActionItem; isLive: boolean }) {
   const getTypeColor = () => {
     switch (action.type) {
       case 'urgent': return 'border-red-500/50 bg-red-500/10';
@@ -442,33 +567,71 @@ function ActionBiasCard({ action }: { action: ActionItem }) {
 
   return (
     <div className={`rounded-lg p-4 border ${getTypeColor()}`}>
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-lg">{getTypeIcon()}</span>
-        <span className="text-xs px-2 py-1 bg-gray-700 rounded text-gray-300 uppercase font-medium">
-          {action.type}
-        </span>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{getTypeIcon()}</span>
+          <span className="text-xs px-2 py-1 bg-gray-700 rounded text-gray-300 uppercase font-medium">
+            {action.type}
+          </span>
+        </div>
+        {isLive && (
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
+            <span className="text-xs text-green-400">Live</span>
+          </div>
+        )}
       </div>
       
       <div className="space-y-2 mb-4">
-        <div>
-          <span className="text-xs text-gray-400 block">PROBLEM:</span>
-          <span className="text-sm text-red-300">{action.problem}</span>
-        </div>
-        
-        <div>
-          <span className="text-xs text-gray-400 block">SOLUTION:</span>
-          <span className="text-sm text-white font-medium">{action.solution}</span>
-        </div>
-        
-        <div>
-          <span className="text-xs text-gray-400 block">BENEFIT:</span>
-          <span className="text-sm text-green-300">{action.benefit}</span>
-        </div>
-        
-        <div>
-          <span className="text-xs text-gray-400 block">TIMELINE:</span>
-          <span className="text-xs text-orange-300">{action.urgency}</span>
-        </div>
+        {/* Display intelligence format or fallback format */}
+        {action.title ? (
+          // Intelligence format
+          <>
+            <div>
+              <span className="text-sm text-white font-medium">{action.title}</span>
+            </div>
+            <div>
+              <span className="text-sm text-gray-300">{action.description}</span>
+            </div>
+            {action.dollarImpact && (
+              <div>
+                <span className="text-xs text-gray-400 block">IMPACT:</span>
+                <span className="text-lg font-bold text-emerald-400">
+                  ${action.dollarImpact.toLocaleString()}
+                </span>
+              </div>
+            )}
+            {action.timeline && (
+              <div>
+                <span className="text-xs text-gray-400 block">TIMELINE:</span>
+                <span className="text-xs text-orange-300">{action.timeline}</span>
+              </div>
+            )}
+          </>
+        ) : (
+          // Fallback format
+          <>
+            <div>
+              <span className="text-xs text-gray-400 block">PROBLEM:</span>
+              <span className="text-sm text-red-300">{action.problem}</span>
+            </div>
+            
+            <div>
+              <span className="text-xs text-gray-400 block">SOLUTION:</span>
+              <span className="text-sm text-white font-medium">{action.solution}</span>
+            </div>
+            
+            <div>
+              <span className="text-xs text-gray-400 block">BENEFIT:</span>
+              <span className="text-sm text-green-300">{action.benefit}</span>
+            </div>
+            
+            <div>
+              <span className="text-xs text-gray-400 block">TIMELINE:</span>
+              <span className="text-xs text-orange-300">{action.urgency}</span>
+            </div>
+          </>
+        )}
       </div>
 
       {action.isClickable ? (
