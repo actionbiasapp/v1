@@ -1,0 +1,21 @@
+export interface SRSOpportunity {
+  recommendedContribution: number;
+  taxSavings: number;
+  daysToDeadline: number;
+  urgencyLevel: 'low' | 'medium' | 'high' | 'critical';
+  actionable: boolean;
+}
+
+export interface ETFTaxEfficiency {
+  usETFExposures: Array<{
+    symbol: string;
+    value: number;
+    riskLevel: 'low' | 'medium' | 'high';
+  }>;
+  recommendedSwitches: Array<{
+    from: string;
+    to: string;
+    benefit: string;
+  }>;
+}
+

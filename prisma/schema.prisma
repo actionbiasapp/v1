@@ -79,3 +79,7 @@ model Recommendation {
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id])
 }
+// Additional User fields for intelligence
+// (Add these to your existing User model)
+// estimatedIncome     Decimal?         @default(120000)
+// currentSRSContrib   Decimal?         @default(0)

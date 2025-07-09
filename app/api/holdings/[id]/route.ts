@@ -1,37 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { convertToAllCurrencies, type CurrencyCode } from '@/app/lib/currency';
+import { getCurrentExchangeRates } from '@/app/lib/exchangeRates';
 
 const prisma = new PrismaClient();
 
-// FIXED: Added proper TypeScript interfaces instead of 'any'
-interface UpdateHoldingData {
-  symbol?: string;
-  name?: string;
-  valueSGD?: number;
-  valueINR?: number;
-  valueUSD?: number;
-  value?: number; // Backward compatibility
-  entryCurrency?: string;
-  category?: string;
-  location?: string;
-  costBasis?: number;
-  quantity?: number;
-}
-
-// GET /api/holdings/[id] - Get individual holding
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-
+    const params = await context.params;
     const holding = await prisma.holdings.findUnique({
-      where: { id },
-      include: {
-        category: true,
-        user: true
-      }
+      where: { id: params.id },
+      include: { category: true }
     });
 
     if (!holding) {
@@ -41,20 +23,25 @@ export async function GET(
       );
     }
 
-    // Convert Decimal fields to numbers for JSON serialization
-    const holdingData = {
-      ...holding,
-      currentValue: Number(holding.valueSGD), // ✅ Fixed: use valueSGD
-      costBasis: holding.costBasis ? Number(holding.costBasis) : null,
-      quantity: holding.quantity ? Number(holding.quantity) : null,
-      valueSGD: holding.valueSGD ? Number(holding.valueSGD) : Number(holding.valueSGD),
-      valueINR: holding.valueINR ? Number(holding.valueINR) : null,
-      valueUSD: holding.valueUSD ? Number(holding.valueUSD) : null,
-      // Backward compatibility
-      value: Number(holding.valueSGD) // ✅ Fixed: use valueSGD (lowercase)
-    };
+    return NextResponse.json({
+      success: true,
+      holding: {
+        id: holding.id,
+        symbol: holding.symbol,
+        name: holding.name,
+        valueSGD: Number(holding.valueSGD),
+        valueINR: Number(holding.valueINR),
+        valueUSD: Number(holding.valueUSD),
+        entryCurrency: holding.entryCurrency,
+        value: Number(holding.valueSGD),
+        category: holding.category.name,
+        location: holding.location,
+        quantity: holding.quantity ? Number(holding.quantity) : null,
+        costBasis: holding.costBasis ? Number(holding.costBasis) : null,
+        updatedAt: holding.updatedAt.toISOString()
+      }
+    });
 
-    return NextResponse.json(holdingData);
   } catch (error) {
     console.error('Error fetching holding:', error);
     return NextResponse.json(
@@ -64,151 +51,93 @@ export async function GET(
   }
 }
 
-// PUT /api/holdings/[id] - Update holding
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const body: UpdateHoldingData = await request.json();
-    
+    const params = await context.params;
+    const body = await request.json();
     const {
       symbol,
       name,
       valueSGD,
       valueINR,
       valueUSD,
-      value, // Backward compatibility
-      entryCurrency,
-      category,
+      value,
+      entryCurrency = 'SGD',
       location,
       costBasis,
       quantity
     } = body;
 
-    // Validation
-    if (!symbol || !name || !category || !location) {
+    if (!symbol || !name) {
       return NextResponse.json(
-        { error: 'Missing required fields: symbol, name, category, location' },
+        { error: 'Symbol and name are required' },
         { status: 400 }
       );
     }
 
-    // Check if holding exists
-    const existingHolding = await prisma.holdings.findUnique({
-      where: { id }
-    });
+    const exchangeRates = await getCurrentExchangeRates();
+    let inputValue: number;
+    let inputCurrency: CurrencyCode = entryCurrency as CurrencyCode;
 
-    if (!existingHolding) {
+    if (valueSGD !== undefined) {
+      inputValue = valueSGD;
+      inputCurrency = 'SGD';
+    } else if (valueINR !== undefined) {
+      inputValue = valueINR;
+      inputCurrency = 'INR';
+    } else if (valueUSD !== undefined) {
+      inputValue = valueUSD;
+      inputCurrency = 'USD';
+    } else if (value !== undefined) {
+      inputValue = value;
+      inputCurrency = 'SGD';
+    } else {
       return NextResponse.json(
-        { error: 'Holding not found' },
-        { status: 404 }
+        { error: 'At least one value is required' },
+        { status: 400 }
       );
     }
 
-    // Get or create category
-    let categoryRecord = await prisma.assetCategory.findFirst({
-      where: {
-        name: category,
-        userId: existingHolding.userId
-      }
-    });
+    const convertedValues = convertToAllCurrencies(inputValue, inputCurrency, exchangeRates);
 
-    if (!categoryRecord) {
-      // Create category if it doesn't exist
-      const targetPercentages: { [key: string]: number } = {
-        'Core': 25,
-        'Growth': 55,
-        'Hedge': 10,
-        'Liquidity': 10
-      };
-
-      categoryRecord = await prisma.assetCategory.create({
-        data: {
-          name: category,
-          targetPercentage: targetPercentages[category] || 20,
-          userId: existingHolding.userId,
-          description: `${category} investments`
-        }
-      });
-    }
-
-    // Prepare update data - FIXED: Proper typing instead of 'any'
-    const updateData: {
-      symbol?: string;
-      name?: string;
-      categoryId?: string;
-      location?: string;
-      valueSGD?: number;
-      valueINR?: number;
-      valueUSD?: number;
-      entryCurrency?: string;
-      costBasis?: number;
-      quantity?: number;
-      updatedAt: Date;
-    } = {
-      symbol: symbol?.toUpperCase(),
-      name,
-      categoryId: categoryRecord.id,
-      location,
-      updatedAt: new Date()
-    };
-
-    // Handle multi-currency values
-    if (valueSGD !== undefined) {
-      updateData.valueSGD = valueSGD;
-    } else if (value !== undefined) {
-      // Backward compatibility
-      updateData.valueSGD = value;
-    }
-
-    if (valueINR !== undefined) {
-      updateData.valueINR = valueINR;
-    }
-
-    if (valueUSD !== undefined) {
-      updateData.valueUSD = valueUSD;
-    }
-
-    if (entryCurrency) {
-      updateData.entryCurrency = entryCurrency;
-    }
-
-    if (costBasis !== undefined) {
-      updateData.costBasis = costBasis;
-    }
-
-    if (quantity !== undefined) {
-      updateData.quantity = quantity;
-    }
-
-    // Update the holding
     const updatedHolding = await prisma.holdings.update({
-      where: { id },
-      data: updateData,
-      include: {
-        category: true
-      }
+      where: { id: params.id },
+      data: {
+        symbol: symbol.toUpperCase(),
+        name,
+        valueSGD: convertedValues.valueSGD,
+        valueINR: convertedValues.valueINR,
+        valueUSD: convertedValues.valueUSD,
+        entryCurrency: inputCurrency,
+        location,
+        costBasis: costBasis || null,
+        quantity: quantity || null,
+        updatedAt: new Date()
+      },
+      include: { category: true }
     });
-
-    // Convert Decimal fields to numbers for JSON response
-    const responseData = {
-      ...updatedHolding,
-      currentValue: Number(updatedHolding.valueSGD),
-      costBasis: updatedHolding.costBasis ? Number(updatedHolding.costBasis) : null,
-      quantity: updatedHolding.quantity ? Number(updatedHolding.quantity) : null,
-      valueSGD: updatedHolding.valueSGD ? Number(updatedHolding.valueSGD) : Number(updatedHolding.valueSGD),
-      valueINR: updatedHolding.valueINR ? Number(updatedHolding.valueINR) : null,
-      valueUSD: updatedHolding.valueUSD ? Number(updatedHolding.valueUSD) : null,
-      // Backward compatibility
-      value: Number(updatedHolding.valueSGD),
-      category: updatedHolding.category.name
-    };
 
     return NextResponse.json({
+      success: true,
       message: 'Holding updated successfully',
-      holding: responseData
+      holding: {
+        id: updatedHolding.id,
+        symbol: updatedHolding.symbol,
+        name: updatedHolding.name,
+        valueSGD: Number(updatedHolding.valueSGD),
+        valueINR: Number(updatedHolding.valueINR),
+        valueUSD: Number(updatedHolding.valueUSD),
+        entryCurrency: updatedHolding.entryCurrency,
+        value: Number(updatedHolding.valueSGD),
+        category: updatedHolding.category.name,
+        location: updatedHolding.location,
+        quantity: updatedHolding.quantity ? Number(updatedHolding.quantity) : null,
+        costBasis: updatedHolding.costBasis ? Number(updatedHolding.costBasis) : null,
+        updatedAt: updatedHolding.updatedAt.toISOString()
+      }
     });
 
   } catch (error) {
@@ -220,17 +149,14 @@ export async function PUT(
   }
 }
 
-// DELETE /api/holdings/[id] - Delete holding
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-
-    // Check if holding exists
+    const params = await context.params;
     const existingHolding = await prisma.holdings.findUnique({
-      where: { id }
+      where: { id: params.id }
     });
 
     if (!existingHolding) {
@@ -240,14 +166,18 @@ export async function DELETE(
       );
     }
 
-    // Delete the holding
     await prisma.holdings.delete({
-      where: { id }
+      where: { id: params.id }
     });
 
     return NextResponse.json({
+      success: true,
       message: 'Holding deleted successfully',
-      deletedId: id
+      deletedHolding: {
+        id: existingHolding.id,
+        symbol: existingHolding.symbol,
+        name: existingHolding.name
+      }
     });
 
   } catch (error) {
