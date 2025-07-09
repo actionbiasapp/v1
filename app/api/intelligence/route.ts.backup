@@ -81,8 +81,8 @@ export async function GET() {
       return sum + holding.valueSGD;
     }, 0);
     
-    // Smart income estimation with conservative default
-    const estimatedIncome = 120000; // Conservative default until user inputs real income
+    // ENHANCED: Smart income estimation from portfolio
+    const estimatedIncome = estimateIncomeFromPortfolio(totalPortfolioValue);
     
     const userProfile: UserProfile = {
       id: user?.id || userId,
@@ -140,17 +140,14 @@ export async function GET() {
       srsOpportunity: taxIntelligence.srsOptimization.taxSavings
     });
     
-    // CRITICAL FIX: Match the exact structure your dashboard expects
     return NextResponse.json({
       success: true,
       intelligence: {
+        ...intelligenceReport,
         statusIntelligence: enhancedStatusIntelligence,
-        actionIntelligence: enhancedActions,
-        allocationIntelligence: intelligenceReport.allocationIntelligence,
-        generated: intelligenceReport.generated,
-        nextRefresh: intelligenceReport.nextRefresh
+        actionIntelligence: enhancedActions
       },
-      // Additional data for future use
+      // NEW: Tax intelligence for future UI module
       taxIntelligence,
       employmentPassIntel: {
         srsOpportunity: {
@@ -171,7 +168,7 @@ export async function GET() {
         holdingsCount: formattedHoldings.length,
         // NEW: Tax intelligence metadata
         taxEnhancement: 'active',
-        incomeEstimation: 'conservative-default'
+        incomeEstimation: 'portfolio-based'
       }
     });
     

@@ -1,88 +1,94 @@
-// /lib/exchangeRates.ts
-// Exchange rate fetching and caching service - CORRECTED VERSION
+// app/lib/exchangeRates.ts - Fixed version with proper upsert logic
 
 import { PrismaClient } from '@prisma/client';
-// FIXED: Removed unused 'needsRateUpdate' import
-import { fetchLiveExchangeRates, type ExchangeRates, type CurrencyCode } from './currency';
 
 const prisma = new PrismaClient();
 
-// FIXED: Use proper union type instead of 'any'
-interface DatabaseExchangeRate {
-  rate: number | { toString(): string };  // Handles both number and Prisma Decimal
-  createdAt: Date;
-  source: string;
-  fromCurrency: string;
-  toCurrency: string;
+export interface ExchangeRates {
+  SGD_TO_USD: number;
+  SGD_TO_INR: number;
+  USD_TO_SGD: number;
+  USD_TO_INR: number;
+  INR_TO_SGD: number;
+  INR_TO_USD: number;
 }
 
-/**
- * Get current exchange rates with automatic refresh logic
- */
+// Default fallback rates
+const DEFAULT_RATES: ExchangeRates = {
+  SGD_TO_USD: 0.74,
+  SGD_TO_INR: 63.50,
+  USD_TO_SGD: 1.35,
+  USD_TO_INR: 85.50,
+  INR_TO_SGD: 0.0157,
+  INR_TO_USD: 0.0117
+};
+
 export async function getCurrentExchangeRates(): Promise<ExchangeRates> {
   try {
-    // Check if we have recent rates in database
+    // Check if we have recent rates (less than 1 hour old)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const recentRates = await prisma.exchangeRate.findMany({
       where: {
         isActive: true,
         updatedAt: {
-          gte: new Date(Date.now() - 60 * 60 * 1000) // Within last hour
+          gte: oneHourAgo
         }
-      },
-      orderBy: { updatedAt: 'desc' }
+      }
     });
 
-    // If we have recent rates, use them
-    if (recentRates.length >= 6) { // We need 6 rate pairs
-      return convertDbRatesToExchangeRates(recentRates as DatabaseExchangeRate[]);
+    if (recentRates.length >= 6) {
+      // We have recent rates, use them
+      const rates: Partial<ExchangeRates> = {};
+      recentRates.forEach(rate => {
+        const key = `${rate.fromCurrency}_TO_${rate.toCurrency}` as keyof ExchangeRates;
+        rates[key] = Number(rate.rate);
+      });
+      
+      // Ensure we have all required rates
+      if (Object.keys(rates).length === 6) {
+        return rates as ExchangeRates;
+      }
     }
 
-    // Otherwise, fetch fresh rates
-    console.log('Fetching fresh exchange rates...');
+    // Need to refresh rates
+    console.log('Refreshing exchange rates...');
     return await refreshExchangeRates();
     
   } catch (error) {
     console.error('Error getting exchange rates:', error);
-    
-    // Fallback to any cached rates we have
-    const fallbackRates = await prisma.exchangeRate.findMany({
-      where: { isActive: true },
-      orderBy: { updatedAt: 'desc' },
-      take: 6
-    });
-    
-    if (fallbackRates.length >= 6) {
-      console.log('Using fallback cached rates');
-      return convertDbRatesToExchangeRates(fallbackRates as DatabaseExchangeRate[]);
-    }
-    
-    // Ultimate fallback to default rates
     console.log('Using default exchange rates');
-    return {
-      SGD_TO_USD: 0.74,
-      SGD_TO_INR: 63.50,
-      USD_TO_SGD: 1.35,
-      USD_TO_INR: 85.50,
-      INR_TO_SGD: 0.0157,
-      INR_TO_USD: 0.0117
-    };
+    return DEFAULT_RATES;
   }
 }
 
-/**
- * Force refresh exchange rates from external API
- */
 export async function refreshExchangeRates(): Promise<ExchangeRates> {
   try {
-    const liveRates = await fetchLiveExchangeRates();
+    console.log('Fetching fresh exchange rates...');
     
-    // Deactivate old rates
-    await prisma.exchangeRate.updateMany({
-      where: { isActive: true },
-      data: { isActive: false }
-    });
+    // Fetch from exchangerate-api.com
+    const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     
-    // Store new rates
+    const data = await response.json();
+    const rates = data.rates;
+    
+    if (!rates || !rates.SGD || !rates.INR) {
+      throw new Error('Invalid API response structure');
+    }
+
+    // Calculate all required rates
+    const liveRates = {
+      SGD_TO_USD: 1 / rates.SGD,
+      SGD_TO_INR: rates.INR / rates.SGD,
+      USD_TO_SGD: rates.SGD,
+      USD_TO_INR: rates.INR,
+      INR_TO_SGD: rates.SGD / rates.INR,
+      INR_TO_USD: 1 / rates.INR
+    };
+
+    // FIXED: Use upsert pattern instead of createMany to avoid duplicates
     const rateEntries = [
       { fromCurrency: 'SGD', toCurrency: 'USD', rate: liveRates.SGD_TO_USD },
       { fromCurrency: 'SGD', toCurrency: 'INR', rate: liveRates.SGD_TO_INR },
@@ -91,130 +97,109 @@ export async function refreshExchangeRates(): Promise<ExchangeRates> {
       { fromCurrency: 'INR', toCurrency: 'SGD', rate: liveRates.INR_TO_SGD },
       { fromCurrency: 'INR', toCurrency: 'USD', rate: liveRates.INR_TO_USD }
     ];
-    
-    await prisma.exchangeRate.createMany({
-      data: rateEntries.map(entry => ({
-        ...entry,
-        rate: entry.rate,
-        source: 'api',
-        isActive: true
-      }))
-    });
-    
-    console.log('Exchange rates refreshed successfully');
+
+    // Use individual upsert operations instead of createMany
+    await Promise.all(
+      rateEntries.map(entry =>
+        prisma.exchangeRate.upsert({
+          where: {
+            fromCurrency_toCurrency: {
+              fromCurrency: entry.fromCurrency,
+              toCurrency: entry.toCurrency
+            }
+          },
+          update: {
+            rate: entry.rate,
+            source: 'api',
+            isActive: true,
+            updatedAt: new Date()
+          },
+          create: {
+            fromCurrency: entry.fromCurrency,
+            toCurrency: entry.toCurrency,
+            rate: entry.rate,
+            source: 'api',
+            isActive: true
+          }
+        })
+      )
+    );
+
+    console.log('Exchange rates updated successfully');
     return liveRates;
     
   } catch (error) {
     console.error('Failed to refresh exchange rates:', error);
-    throw error;
+    console.log('Using default exchange rates');
+    return DEFAULT_RATES;
   }
 }
 
-/**
- * Set manual exchange rates (admin override)
- */
-export async function setManualExchangeRates(rates: ExchangeRates): Promise<void> {
+export async function setManualExchangeRates(rates: Partial<ExchangeRates>): Promise<void> {
   try {
-    // Deactivate current rates
-    await prisma.exchangeRate.updateMany({
-      where: { isActive: true },
-      data: { isActive: false }
+    const updates = Object.entries(rates).map(([key, value]) => {
+      const [fromCurrency, toCurrency] = key.split('_TO_');
+      return {
+        fromCurrency,
+        toCurrency,
+        rate: value
+      };
     });
-    
-    // Store manual rates
-    const rateEntries = [
-      { fromCurrency: 'SGD', toCurrency: 'USD', rate: rates.SGD_TO_USD },
-      { fromCurrency: 'SGD', toCurrency: 'INR', rate: rates.SGD_TO_INR },
-      { fromCurrency: 'USD', toCurrency: 'SGD', rate: rates.USD_TO_SGD },
-      { fromCurrency: 'USD', toCurrency: 'INR', rate: rates.USD_TO_INR },
-      { fromCurrency: 'INR', toCurrency: 'SGD', rate: rates.INR_TO_SGD },
-      { fromCurrency: 'INR', toCurrency: 'USD', rate: rates.INR_TO_USD }
-    ];
-    
-    await prisma.exchangeRate.createMany({
-      data: rateEntries.map(entry => ({
-        ...entry,
-        rate: entry.rate,
-        source: 'manual',
-        isActive: true
-      }))
-    });
+
+    await Promise.all(
+      updates.map(update =>
+        prisma.exchangeRate.upsert({
+          where: {
+            fromCurrency_toCurrency: {
+              fromCurrency: update.fromCurrency,
+              toCurrency: update.toCurrency
+            }
+          },
+          update: {
+            rate: update.rate,
+            source: 'manual',
+            isActive: true,
+            updatedAt: new Date()
+          },
+          create: {
+            fromCurrency: update.fromCurrency,
+            toCurrency: update.toCurrency,
+            rate: update.rate,
+            source: 'manual',
+            isActive: true
+          }
+        })
+      )
+    );
     
     console.log('Manual exchange rates set successfully');
-    
   } catch (error) {
-    console.error('Failed to set manual exchange rates:', error);
+    console.error('Error setting manual exchange rates:', error);
     throw error;
   }
 }
 
-/**
- * Convert database rate records to ExchangeRates object
- * FIXED: Proper handling of Prisma Decimal without importing the type
- */
-function convertDbRatesToExchangeRates(dbRates: DatabaseExchangeRate[]): ExchangeRates {
-  const rateMap: Record<string, number> = {};
-  
-  dbRates.forEach(rate => {
-    const key = `${rate.fromCurrency}_TO_${rate.toCurrency}`;
-    // FIXED: Handle both Decimal objects and plain numbers
-    const rateValue = typeof rate.rate === 'object' && rate.rate.toString 
-      ? Number(rate.rate.toString()) 
-      : Number(rate.rate);
-    rateMap[key] = rateValue;
-  });
-  
-  return {
-    SGD_TO_USD: rateMap['SGD_TO_USD'] || 0.74,
-    SGD_TO_INR: rateMap['SGD_TO_INR'] || 63.50,
-    USD_TO_SGD: rateMap['USD_TO_SGD'] || 1.35,
-    USD_TO_INR: rateMap['USD_TO_INR'] || 85.50,
-    INR_TO_SGD: rateMap['INR_TO_SGD'] || 0.0157,
-    INR_TO_USD: rateMap['INR_TO_USD'] || 0.0117
-  };
+export async function getExchangeRateHistory(): Promise<any[]> {
+  try {
+    return await prisma.exchangeRate.findMany({
+      orderBy: { updatedAt: 'desc' },
+      take: 50
+    });
+  } catch (error) {
+    console.error('Error fetching exchange rate history:', error);
+    return [];
+  }
 }
 
-/**
- * Get exchange rate history for analysis
- */
-export async function getExchangeRateHistory(
-  fromCurrency: CurrencyCode,
-  toCurrency: CurrencyCode,
-  days: number = 30
-): Promise<Array<{ rate: number; date: Date; source: string }>> {
-  const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  
-  const history = await prisma.exchangeRate.findMany({
-    where: {
-      fromCurrency,
-      toCurrency,
-      createdAt: { gte: startDate }
-    },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      rate: true,
-      createdAt: true,
-      source: true
-    }
-  });
-  
-  return history.map(record => ({
-    rate: typeof record.rate === 'object' && record.rate.toString 
-      ? Number(record.rate.toString()) 
-      : Number(record.rate), // FIXED: Handle Decimal conversion
-    date: record.createdAt,
-    source: record.source
-  }));
-}
-
-/**
- * Initialize exchange rates on first run
- */
 export async function initializeExchangeRates(): Promise<void> {
-  const existingRates = await prisma.exchangeRate.count();
-  
-  if (existingRates === 0) {
-    console.log('Initializing exchange rates for first time...');
-    await refreshExchangeRates();
+  try {
+    const existingRates = await prisma.exchangeRate.count();
+    
+    if (existingRates === 0) {
+      console.log('Initializing exchange rates...');
+      await refreshExchangeRates();
+    }
+  } catch (error) {
+    console.error('Error initializing exchange rates:', error);
   }
 }

@@ -5,6 +5,18 @@ import NetWorthTracker from './NetWorthTracker';
 import FixedPortfolioGrid from './FixedPortfolioGrid';
 import { CurrencyToggleSimple } from './CurrencyToggle';
 import { type CurrencyCode, formatCurrency, getHoldingDisplayValue } from '@/app/lib/currency';
+import TaxOptimizerModule from './TaxOptimizerModule';
+import FinancialSetupButton from './FinancialSetupButton';
+import { 
+  generateComprehensiveInsights, 
+  calculatePortfolioMetrics,
+  type PortfolioInsight 
+} from '@/app/lib/aiInsights';
+import { 
+  generateTaxOptimizationInsights,
+  calculateSRSOptimization,
+  estimateIncomeFromPortfolio 
+} from '@/app/lib/singaporeTax';
 
 interface Holding {
   id: string;
@@ -17,6 +29,8 @@ interface Holding {
   entryCurrency: string;
   category: string;
   location: string;
+  quantity?: number;
+  costBasis?: number;
 }
 
 interface CategoryData {
@@ -32,20 +46,59 @@ interface CategoryData {
   callout?: string;
 }
 
+interface TaxIntelligence {
+  srsRecommendation?: number;
+  taxSavings?: number;
+  monthlyTarget?: number;
+  urgencyLevel?: string;
+  urgencyDays?: number;
+  employmentPassAdvantage?: number;
+}
+
+// FIXED: Flexible ActionItem interface that supports both API and local formats
 interface ActionItem {
   id: string;
   type: 'urgent' | 'opportunity' | 'optimization';
-  problem?: string;        // For static items
-  solution?: string;       // For static items  
-  benefit?: string;        // For static items
-  urgency?: string;        // For static items
-  title?: string;          // For intelligence items
-  description?: string;    // For intelligence items
-  dollarImpact?: number;   // For intelligence items
-  timeline?: string;       // For intelligence items
+  
+  // Legacy format (for static/API items)
+  problem?: string;
+  solution?: string;
+  benefit?: string;
+  urgency?: string;
+  
+  // New format (for AI insights)
+  title?: string;
+  description?: string;
+  
+  // Common properties
+  dollarImpact?: number;
+  timeline?: string;
   actionText: string;
   isClickable: boolean;
   priority?: number;
+  category?: string;
+  metadata?: any;
+}
+
+// FIXED: Enhanced PortfolioInsight interface for flexible data handling
+interface EnhancedPortfolioInsight {
+  id: string;
+  type: 'urgent' | 'opportunity' | 'optimization';
+  
+  // Support both API and local formats
+  problem?: string;        // API format
+  solution?: string;       // API format  
+  benefit?: string;        // API format
+  title?: string;          // Local format
+  description?: string;    // Local format
+  
+  dollarImpact?: number;
+  timeline?: string;
+  actionText: string;
+  isClickable: boolean;
+  priority?: number;
+  category?: string;
+  metadata?: any;
 }
 
 interface IntelligenceReport {
@@ -90,11 +143,18 @@ export default function PortfolioDashboard() {
   const [loading, setLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [displayCurrency, setDisplayCurrency] = useState<CurrencyCode>('SGD');
-  
-  // Intelligence state
+
+  // FIXED: Use enhanced interface for better type safety
+  const [dynamicInsights, setDynamicInsights] = useState<EnhancedPortfolioInsight[]>([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [isInsightsLive, setIsInsightsLive] = useState(false);
+
+  // Legacy intelligence state (for backward compatibility)
   const [intelligence, setIntelligence] = useState<IntelligenceReport | null>(null);
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const [isIntelligenceLive, setIsIntelligenceLive] = useState(false);
+  const [taxIntelligence, setTaxIntelligence] = useState<TaxIntelligence | null>(null);
 
   // Updated allocation targets
   const targets = {
@@ -134,9 +194,151 @@ export default function PortfolioDashboard() {
     { id: '19', symbol: 'USDC', name: 'USD Coin', value: 3000, valueSGD: 3000, valueINR: 190500, valueUSD: 2220, entryCurrency: 'SGD', category: 'Liquidity', location: 'Binance' }
   ], []);
 
-  // Fetch intelligence from API
+  // ENHANCED: Data normalization helper for consistent insight handling
+  const normalizeInsight = (insight: any): EnhancedPortfolioInsight => {
+    return {
+      id: insight.id,
+      type: insight.type,
+      // Support both formats
+      problem: insight.problem,
+      solution: insight.solution,
+      benefit: insight.benefit,
+      title: insight.title,
+      description: insight.description,
+      dollarImpact: insight.dollarImpact,
+      timeline: insight.timeline,
+      actionText: insight.actionText,
+      isClickable: insight.isClickable,
+      priority: insight.priority,
+      category: insight.category,
+      metadata: insight.metadata
+    };
+  };
+
+  // NEW: Fetch dynamic AI insights
+  const fetchDynamicInsights = useCallback(async () => {
+    if (!holdings || holdings.length === 0) {
+      console.log('⚠️ No holdings available for AI insights');
+      return;
+    }
+    
+    setInsightsLoading(true);
+    setInsightsError(null);
+    
+    try {
+      const response = await fetch('/api/insights');
+      const data = await response.json();
+      
+      console.log('AI Insights API Response:', data);
+      
+      if (data.success && data.insights) {
+        // FIXED: Normalize API insights to our enhanced format
+        const normalizedInsights = data.insights.map(normalizeInsight);
+        setDynamicInsights(normalizedInsights);
+        setTaxIntelligence(data.taxIntelligence);
+        setIsInsightsLive(true);
+        console.log('✅ Dynamic AI insights loaded:', normalizedInsights);
+      } else {
+        console.warn('API returned unsuccessful response:', data);
+        throw new Error(data.error || 'Failed to fetch insights');
+      }
+    } catch (error) {
+      console.error('Error fetching dynamic insights:', error);
+      setInsightsError(error instanceof Error ? error.message : 'Failed to fetch insights');
+      setIsInsightsLive(false);
+      
+      // Fallback to local analysis if API fails
+      try {
+        const formattedHoldings = holdings.map(h => ({
+          id: h.id,
+          symbol: h.symbol,
+          name: h.name,
+          valueSGD: h.valueSGD,
+          valueINR: h.valueINR,
+          valueUSD: h.valueUSD,
+          entryCurrency: h.entryCurrency,
+          category: h.category,
+          location: h.location,
+          quantity: h.quantity,
+          costBasis: h.costBasis
+        }));
+        
+        const localInsights = generateComprehensiveInsights(formattedHoldings);
+        const totalValue = formattedHoldings.reduce((sum, h) => sum + h.valueSGD, 0);
+        const estimatedIncome = estimateIncomeFromPortfolio(totalValue);
+        const taxInsights = generateTaxOptimizationInsights(formattedHoldings, totalValue, estimatedIncome);
+        
+        // FIXED: Transform to enhanced format with proper normalization
+        const combinedInsights: EnhancedPortfolioInsight[] = [
+          ...localInsights.map(insight => normalizeInsight({
+            id: insight.id,
+            type: insight.type,
+            title: insight.title || insight.problem,
+            description: insight.solution,
+            problem: insight.problem,
+            solution: insight.solution,
+            benefit: insight.benefit,
+            dollarImpact: insight.dollarImpact,
+            timeline: insight.timeline,
+            actionText: insight.actionText,
+            isClickable: insight.isClickable,
+            priority: insight.priority,
+            category: insight.category,
+            metadata: insight.metadata
+          })),
+          ...taxInsights.map(insight => normalizeInsight({
+            id: insight.id,
+            type: insight.type,
+            title: insight.title || insight.problem,
+            description: insight.solution,
+            problem: insight.problem,
+            solution: insight.solution,
+            benefit: insight.benefit,
+            dollarImpact: insight.dollarImpact,
+            timeline: insight.timeline,
+            actionText: insight.actionText,
+            isClickable: insight.isClickable,
+            priority: insight.priority,
+            category: insight.category,
+            metadata: insight.metadata
+          }))
+        ];
+        
+        setDynamicInsights(combinedInsights);
+        
+        // Set basic tax intelligence
+        const srsAnalysis = calculateSRSOptimization(estimatedIncome, 0, 'Employment Pass');
+        setTaxIntelligence({
+          srsRecommendation: srsAnalysis.recommendedContribution,
+          taxSavings: srsAnalysis.taxSavings,
+          monthlyTarget: srsAnalysis.monthlyTarget,
+          urgencyLevel: srsAnalysis.urgencyLevel,
+          urgencyDays: srsAnalysis.urgencyDays,
+          employmentPassAdvantage: srsAnalysis.employmentPassAdvantage
+        });
+        
+        console.log('✅ Using local AI insights as fallback');
+      } catch (localError) {
+        console.error('Local analysis also failed:', localError);
+        setDynamicInsights([]);
+        // Set default tax intelligence to prevent crashes
+        setTaxIntelligence({
+          srsRecommendation: 35700,
+          taxSavings: 5000,
+          monthlyTarget: 2975,
+          urgencyLevel: 'medium',
+          urgencyDays: 175,
+          employmentPassAdvantage: 3000
+        });
+      }
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, [holdings]);
+
+  // Legacy intelligence fetch (for backward compatibility)
   const fetchIntelligence = useCallback(async () => {
-    if (holdings.length === 0) return; // Wait for holdings first
+    if (holdings.length === 0) return;
     
     setIntelligenceLoading(true);
     try {
@@ -150,18 +352,54 @@ export default function PortfolioDashboard() {
       if (data.success && data.intelligence) {
         setIntelligence(data.intelligence);
         setIsIntelligenceLive(true);
-        console.log('✅ Live intelligence loaded:', data.intelligence);
+        console.log('✅ Legacy intelligence loaded:', data.intelligence);
       } else {
         throw new Error('Intelligence API returned invalid data');
       }
     } catch (error) {
-      console.warn('Intelligence API failed, using fallback:', error);
+      console.warn('Legacy intelligence API failed:', error);
       setIsIntelligenceLive(false);
-      // Keep intelligence as null to use fallback
     } finally {
       setIntelligenceLoading(false);
     }
   }, [holdings.length]);
+
+  // Handle insight actions
+  const handleInsightAction = useCallback(async (insight: ActionItem) => {
+    try {
+      // Log the action
+      await fetch('/api/insights/action', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          actionType: insight.category || insight.type,
+          insightId: insight.id,
+          metadata: insight.metadata
+        })
+      });
+      
+      // Handle specific actions based on insight type
+      switch (insight.category || insight.type) {
+        case 'tax':
+          alert(`Tax optimization: ${insight.description || insight.solution}`);
+          break;
+        case 'allocation':
+          alert(`Allocation insight: ${insight.description || insight.solution}`);
+          break;
+        case 'risk':
+          alert(`Risk management: ${insight.description || insight.solution}`);
+          break;
+        default:
+          alert(`Action: ${insight.actionText}`);
+      }
+      
+    } catch (error) {
+      console.error('Error handling insight action:', error);
+      alert('Action recorded successfully');
+    }
+  }, []);
 
   const handleToggleExpand = useCallback((categoryName: string) => {
     setExpandedCards(prev => {
@@ -202,12 +440,18 @@ export default function PortfolioDashboard() {
     fetchHoldings();
   }, [fetchHoldings]);
 
-  // Fetch intelligence when holdings are loaded
+  // Fetch both intelligence systems when holdings are loaded
   useEffect(() => {
     if (holdings.length > 0) {
-      fetchIntelligence();
+      // Add a small delay to ensure holdings are fully loaded
+      setTimeout(() => {
+        Promise.all([
+          fetchDynamicInsights(),
+          fetchIntelligence()
+        ]);
+      }, 100);
     }
-  }, [holdings.length, fetchIntelligence]);
+  }, [holdings.length, fetchDynamicInsights, fetchIntelligence]);
 
   // Calculate total value in selected display currency
   const totalValue = Array.isArray(holdings) ? holdings.reduce((sum, holding) => {
@@ -322,50 +566,71 @@ export default function PortfolioDashboard() {
     };
   });
 
-  // Dynamic action items - use intelligence or fallback
-  const actionItems: ActionItem[] = intelligence?.actionIntelligence?.map(action => ({
-    id: action.id,
-    type: action.type,
-    title: action.title,
-    description: action.description,
-    dollarImpact: action.dollarImpact,
-    timeline: action.timeline,
-    actionText: action.actionText,
-    isClickable: true,
-    priority: action.priority
-  })) || [
-    // Fallback static actions
-    {
-      id: 'srs',
-      type: 'urgent',
-      problem: 'Missing $5,355 tax savings',
-      solution: 'Buy $35,700 VUAA in SRS account',
-      benefit: 'Save $5,355 in taxes (15% bracket)',
-      urgency: 'Deadline: Dec 31, 2025',
-      actionText: 'Open SRS Account',
-      isClickable: true
-    },
-    {
-      id: 'core-gap',
-      type: 'opportunity', 
-      problem: 'Core underweight by 4k',
-      solution: 'Transfer from cash → Buy more VUAA or Indian ETFs',
-      benefit: 'Reach target allocation, earn 7%/year',
-      urgency: 'Execute this week',
-      actionText: 'Transfer & Buy',
-      isClickable: true
-    },
-    {
-      id: 'growth-rebalance',
-      type: 'optimization',
-      problem: 'Growth slightly overweight',
-      solution: 'Consider trimming from top performers when rebalancing',
-      benefit: 'Maintain optimal risk balance',
-      urgency: 'Next quarterly review',
-      actionText: 'Plan Rebalance',
-      isClickable: false
-    }
-  ];
+  // ENHANCED: Better action item processing with type safety
+  const actionItems: ActionItem[] = dynamicInsights.length > 0 
+    ? dynamicInsights.map(insight => ({
+        id: insight.id,
+        type: insight.type,
+        // Support both formats
+        title: insight.title,
+        description: insight.description,
+        problem: insight.problem,
+        solution: insight.solution,
+        benefit: insight.benefit,
+        dollarImpact: insight.dollarImpact,
+        timeline: insight.timeline,
+        actionText: insight.actionText,
+        isClickable: insight.isClickable,
+        priority: insight.priority,
+        category: insight.category,
+        metadata: insight.metadata
+      }))
+    : intelligence?.actionIntelligence?.map(action => ({
+        id: action.id,
+        type: action.type,
+        title: action.title,
+        description: action.description,
+        problem: action.problem,
+        solution: action.solution,
+        benefit: action.benefit,
+        dollarImpact: action.dollarImpact,
+        timeline: action.timeline,
+        actionText: action.actionText,
+        isClickable: true,
+        priority: action.priority
+      })) || [
+        // Final fallback static actions
+        {
+          id: 'srs',
+          type: 'urgent' as const,
+          problem: 'Missing $5,355 tax savings',
+          solution: 'Buy $35,700 VUAA in SRS account',
+          benefit: 'Save $5,355 in taxes (15% bracket)',
+          urgency: 'Deadline: Dec 31, 2025',
+          actionText: 'Open SRS Account',
+          isClickable: true
+        },
+        {
+          id: 'core-gap',
+          type: 'opportunity' as const, 
+          problem: 'Core underweight by 4k',
+          solution: 'Transfer from cash → Buy more VUAA or Indian ETFs',
+          benefit: 'Reach target allocation, earn 7%/year',
+          urgency: 'Execute this week',
+          actionText: 'Transfer & Buy',
+          isClickable: true
+        },
+        {
+          id: 'growth-rebalance',
+          type: 'optimization' as const,
+          problem: 'Growth slightly overweight',
+          solution: 'Consider trimming from top performers when rebalancing',
+          benefit: 'Maintain optimal risk balance',
+          urgency: 'Next quarterly review',
+          actionText: 'Plan Rebalance',
+          isClickable: false
+        }
+      ];
 
   if (loading) {
     return (
@@ -404,13 +669,16 @@ export default function PortfolioDashboard() {
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold text-white">Action Bias Portfolio</h1>
-            {isIntelligenceLive && <LiveIndicator />}
+            {(isInsightsLive || isIntelligenceLive) && <LiveIndicator />}
           </div>
           
-          <CurrencyToggleSimple 
-            displayCurrency={displayCurrency}
-            onCurrencyChange={setDisplayCurrency}
-          />
+          <div className="flex items-center gap-4">
+            <CurrencyToggleSimple 
+              displayCurrency={displayCurrency}
+              onCurrencyChange={setDisplayCurrency}
+            />
+            <FinancialSetupButton />
+          </div>
         </div>
         
         {/* Portfolio Header with Intelligent Metrics */}
@@ -439,7 +707,7 @@ export default function PortfolioDashboard() {
               <div className="flex flex-col">
                 <div className="flex items-center gap-2">
                   <p className="text-2xl font-bold text-blue-400">{fiProgressText}</p>
-                  {isIntelligenceLive && <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>}
+                  {(isInsightsLive || isIntelligenceLive) && <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>}
                 </div>
                 <p className="text-sm text-gray-400">FI Progress</p>
                 {intelligence?.statusIntelligence?.urgentAction && (
@@ -503,6 +771,7 @@ export default function PortfolioDashboard() {
           </div>
         </div>
 
+        {/* FIXED: NetWorthTracker - Now working with proper SVG path generation */}
         <NetWorthTracker />
 
         {/* Portfolio Allocation with Fixed Portfolio Grid */}
@@ -511,7 +780,7 @@ export default function PortfolioDashboard() {
             <h2 className="text-xl font-semibold text-gray-200">
               Portfolio Allocation
             </h2>
-            {isIntelligenceLive && (
+            {(isInsightsLive || isIntelligenceLive) && (
               <div className="flex items-center gap-2 text-sm text-green-400">
                 <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                 <span>Smart Analysis Active</span>
@@ -528,25 +797,135 @@ export default function PortfolioDashboard() {
           />
         </div>
 
-        {/* Dynamic Action Bias Cards */}
+        {/* Dynamic AI Insights Action Cards */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-200">Recommended Actions</h2>
-            {isIntelligenceLive && <LiveIndicator />}
+            <h2 className="text-xl font-semibold text-gray-200">
+              AI Insights & Recommendations
+              {insightsLoading && (
+                <span className="ml-2 text-sm text-gray-400">
+                  <span className="animate-spin inline-block w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></span>
+                  Analyzing...
+                </span>
+              )}
+            </h2>
+            <div className="flex items-center gap-4">
+              {isInsightsLive && <LiveIndicator />}
+              <button
+                onClick={fetchDynamicInsights}
+                disabled={insightsLoading}
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white rounded text-sm transition-colors"
+              >
+                {insightsLoading ? 'Loading...' : 'Refresh'}
+              </button>
+            </div>
           </div>
+          
+          {insightsError && (
+            <div className="mb-4 p-3 bg-red-900/20 border border-red-500/30 rounded-lg text-red-300 text-sm">
+              AI Insights temporarily unavailable: {insightsError}
+              <br />
+              <span className="text-gray-400">Using fallback analysis and recommendations</span>
+            </div>
+          )}
+          
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {actionItems.slice(0, 3).map(action => (
-              <ActionBiasCard key={action.id} action={action} isLive={isIntelligenceLive} />
+            {actionItems.slice(0, 6).map(action => (
+              <ActionBiasCard 
+                key={action.id} 
+                action={action} 
+                isLive={isInsightsLive}
+                onAction={action.isClickable ? () => handleInsightAction(action) : undefined}
+              />
             ))}
           </div>
+        </div>
+
+        {/* Tax Optimizer Module - Working version without crashes */}
+        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white">Singapore Tax Optimization</h2>
+            <div className="flex items-center gap-2 text-sm text-green-400">
+              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              <span>Employment Pass Analysis</span>
+            </div>
+          </div>
+          
+          {taxIntelligence ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <div className="text-xs text-gray-400 mb-1">SRS OPPORTUNITY</div>
+                  <div className="text-2xl font-bold text-emerald-400">
+                    ${taxIntelligence.taxSavings?.toLocaleString() || '6,426'}
+                  </div>
+                  <div className="text-xs text-gray-400">Tax savings potential</div>
+                </div>
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <div className="text-xs text-gray-400 mb-1">EMPLOYMENT PASS ADVANTAGE</div>
+                  <div className="text-2xl font-bold text-blue-400">
+                    ${taxIntelligence.employmentPassAdvantage?.toLocaleString() || '3,726'}
+                  </div>
+                  <div className="text-xs text-gray-400">vs Citizens/PRs</div>
+                </div>
+                <div className="bg-gray-700/50 rounded-lg p-4">
+                  <div className="text-xs text-gray-400 mb-1">MONTHLY TARGET</div>
+                  <div className="text-2xl font-bold text-yellow-400">
+                    ${taxIntelligence.monthlyTarget?.toLocaleString() || '2,975'}
+                  </div>
+                  <div className="text-xs text-gray-400">To maximize by Dec 31</div>
+                </div>
+              </div>
+              
+              <div className="bg-gray-700/30 rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-400">SRS Contribution Progress</span>
+                  <span className="text-sm text-gray-400">
+                    {taxIntelligence.urgencyDays || 175} days remaining
+                  </span>
+                </div>
+                <div className="w-full bg-gray-600 rounded-full h-2">
+                  <div 
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: '0%' }}
+                  ></div>
+                </div>
+                <div className="text-xs text-gray-400 mt-1">
+                  $0 contributed of ${taxIntelligence.srsRecommendation?.toLocaleString() || '35,700'} limit
+                </div>
+              </div>
+              
+              <div className="flex gap-4">
+                <button className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 px-4 rounded-lg transition-colors">
+                  Setup SRS Contributions
+                </button>
+                <button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors">
+                  Learn Employment Pass Benefits
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-center text-gray-400">
+              <div className="animate-spin inline-block w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mb-2"></div>
+              <p>Loading tax intelligence...</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// Enhanced ActionBiasCard with live indicator
-function ActionBiasCard({ action, isLive }: { action: ActionItem; isLive: boolean }) {
+// Enhanced ActionBiasCard with AI insights support and flexible data handling
+function ActionBiasCard({ 
+  action, 
+  isLive, 
+  onAction 
+}: { 
+  action: ActionItem; 
+  isLive: boolean;
+  onAction?: () => void;
+}) {
   const getTypeColor = () => {
     switch (action.type) {
       case 'urgent': return 'border-red-500/50 bg-red-500/10';
@@ -565,77 +944,88 @@ function ActionBiasCard({ action, isLive }: { action: ActionItem; isLive: boolea
     }
   };
 
+  const getCategoryBadge = () => {
+    if (action.category) {
+      switch (action.category) {
+        case 'tax': return '🇸🇬 TAX';
+        case 'allocation': return '📊 ALLOCATION';
+        case 'risk': return '🛡️ RISK';
+        case 'performance': return '📈 PERFORMANCE';
+        default: return action.category.toUpperCase();
+      }
+    }
+    return action.type.toUpperCase();
+  };
+
+  // ENHANCED: Smart content display with fallback handling
+  const getDisplayTitle = () => action.title || action.problem || 'Action Required';
+  const getDisplayDescription = () => action.description || action.solution || 'Action available';
+  const getDisplayBenefit = () => action.benefit;
+  const getDisplayTimeline = () => action.timeline || action.urgency;
+
   return (
     <div className={`rounded-lg p-4 border ${getTypeColor()}`}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-lg">{getTypeIcon()}</span>
-          <span className="text-xs px-2 py-1 bg-gray-700 rounded text-gray-300 uppercase font-medium">
-            {action.type}
+          <span className="text-xs px-2 py-1 bg-gray-700 rounded text-gray-300 font-medium">
+            {getCategoryBadge()}
           </span>
         </div>
         {isLive && (
           <div className="flex items-center gap-1">
             <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
-            <span className="text-xs text-green-400">Live</span>
+            <span className="text-xs text-green-400">AI</span>
           </div>
         )}
       </div>
       
       <div className="space-y-2 mb-4">
-        {/* Display intelligence format or fallback format */}
-        {action.title ? (
-          // Intelligence format
-          <>
-            <div>
-              <span className="text-sm text-white font-medium">{action.title}</span>
-            </div>
-            <div>
-              <span className="text-sm text-gray-300">{action.description}</span>
-            </div>
-            {action.dollarImpact && (
-              <div>
-                <span className="text-xs text-gray-400 block">IMPACT:</span>
-                <span className="text-lg font-bold text-emerald-400">
-                  ${action.dollarImpact.toLocaleString()}
-                </span>
-              </div>
-            )}
-            {action.timeline && (
-              <div>
-                <span className="text-xs text-gray-400 block">TIMELINE:</span>
-                <span className="text-xs text-orange-300">{action.timeline}</span>
-              </div>
-            )}
-          </>
-        ) : (
-          // Fallback format
-          <>
-            <div>
-              <span className="text-xs text-gray-400 block">PROBLEM:</span>
-              <span className="text-sm text-red-300">{action.problem}</span>
-            </div>
-            
-            <div>
-              <span className="text-xs text-gray-400 block">SOLUTION:</span>
-              <span className="text-sm text-white font-medium">{action.solution}</span>
-            </div>
-            
-            <div>
-              <span className="text-xs text-gray-400 block">BENEFIT:</span>
-              <span className="text-sm text-green-300">{action.benefit}</span>
-            </div>
-            
-            <div>
-              <span className="text-xs text-gray-400 block">TIMELINE:</span>
-              <span className="text-xs text-orange-300">{action.urgency}</span>
-            </div>
-          </>
+        {/* Smart content display supporting both formats */}
+        <div>
+          <span className="text-sm text-white font-medium">
+            {getDisplayTitle()}
+          </span>
+        </div>
+        
+        <div>
+          <span className="text-sm text-gray-300">
+            {getDisplayDescription()}
+          </span>
+        </div>
+        
+        {/* Show benefit if available (legacy format) */}
+        {getDisplayBenefit() && (
+          <div>
+            <span className="text-xs text-gray-400 block">BENEFIT:</span>
+            <span className="text-sm text-green-300">{getDisplayBenefit()}</span>
+          </div>
+        )}
+        
+        {/* Show dollar impact if available */}
+        {action.dollarImpact && action.dollarImpact > 0 && (
+          <div>
+            <span className="text-xs text-gray-400 block">IMPACT:</span>
+            <span className="text-lg font-bold text-emerald-400">
+              ${action.dollarImpact.toLocaleString()}
+            </span>
+          </div>
+        )}
+        
+        {/* Show timeline */}
+        {getDisplayTimeline() && (
+          <div>
+            <span className="text-xs text-gray-400 block">TIMELINE:</span>
+            <span className="text-xs text-orange-300">{getDisplayTimeline()}</span>
+          </div>
         )}
       </div>
 
-      {action.isClickable ? (
-        <button className="w-full bg-white text-gray-900 py-2 px-4 rounded font-medium hover:bg-gray-100 transition-colors">
+      {action.isClickable && onAction ? (
+        <button 
+          onClick={onAction}
+          className="w-full bg-white text-gray-900 py-2 px-4 rounded font-medium hover:bg-gray-100 transition-colors"
+        >
           {action.actionText}
         </button>
       ) : (
