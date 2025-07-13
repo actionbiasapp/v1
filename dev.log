@@ -1,0 +1,24 @@
+
+> v1@0.1.0 dev
+> next dev --turbopack
+
+   ▲ Next.js 15.3.4 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://172.20.10.7:3000
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 1111ms
+ ✓ Compiled /api/financial-profile in 429ms
+ GET /api/financial-profile 200 in 5737ms
+POST Error: TypeError: Cannot read properties of undefined (reading 'taxStatus')
+    at POST (app/api/financial-profile/route.ts:89:24)
+  87 |       where: { id: userId },
+  88 |       update: {
+> 89 |         taxStatus: data.taxStatus || "Employment Pass",
+     |                        ^
+  90 |         fiGoal: data.fiTarget || 2500000,
+  91 |         fiTargetYear: data.fiYear || 2032
+  92 |       },
+ POST /api/financial-profile 500 in 68ms
+[?25h

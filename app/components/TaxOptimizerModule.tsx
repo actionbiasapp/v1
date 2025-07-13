@@ -1,28 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { TaxIntelligence } from '@/app/lib/types/shared';
 
-interface TaxIntelligence {
-  srsOptimization: {
-    remainingRoom: number;
-    taxSavings: number;
-    daysToDeadline: number;
-    monthlyTarget: number;
-    urgencyLevel: 'low' | 'medium' | 'high' | 'critical';
-    currentContributions: number;
-    maxContribution: number;
-  };
-  opportunityCost: {
-    monthlyPotentialSavings: number;
-    actionMessage: string;
-    urgencyMessage: string;
-  };
-  employmentPassAdvantage: {
-    srsLimitAdvantage: number;
-    additionalTaxSavings: number;
-    vsComparison: string;
-  };
-}
 
 interface TaxOptimizerModuleProps {
   taxIntelligence?: TaxIntelligence;

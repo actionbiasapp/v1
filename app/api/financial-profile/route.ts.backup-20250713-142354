@@ -1,0 +1,148 @@
+// app/api/financial-profile/route.ts (OPTIMIZED SINGLE-CALL APPROACH)
+import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export async function GET() {
+  try {
+    const userId = 'default-user';
+    
+    // Single query with joins instead of multiple calls
+    const [user, incomeRecords, expenseRecords] = await Promise.all([
+      prisma.user.findFirst({ where: { id: userId } }),
+      prisma.incomeRecord.findMany({ where: { userId }, orderBy: { year: 'desc' }, take: 5 }),
+      prisma.expenseRecord.findMany({ where: { userId }, orderBy: { year: 'desc' }, take: 5 })
+    ]);
+
+    if (!user) {
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    }
+
+    // Merge income/expense data efficiently
+    const yearlyData = incomeRecords.map(income => {
+      const expense = expenseRecords.find(e => e.year === income.year);
+      const expenses = expense ? Number(expense.totalExpenses) : 0;
+      const incomeAmount = Number(income.totalIncome);
+      const savings = incomeAmount - expenses;
+      
+      return {
+        year: income.year,
+        income: incomeAmount,
+        expenses,
+        savings,
+        rate: incomeAmount > 0 ? (savings / incomeAmount) * 100 : 0
+      };
+    });
+
+    const currentYear = new Date().getFullYear();
+    const savingsRecord = await prisma.savingsRecord.findFirst({ where: { userId, year: currentYear } });
+    const currentSRS = savingsRecord ? Number(savingsRecord.srsContributions) : 0;
+    // Return simplified data structure
+    const data = {
+      income: yearlyData[0]?.income || 0,
+      expenses: yearlyData[0]?.expenses || 0,
+      srsContributions: currentSRS, // TODO: Get from SRS table when available
+      taxStatus: user.taxStatus,
+      fiTarget: Number(user.fiGoal),
+      fiYear: user.fiTargetYear
+    };
+
+    return NextResponse.json({ 
+      success: true, 
+      data,
+      yearlyData: yearlyData.slice(1) // Don't duplicate current year
+    });
+    
+  } catch (error) {
+    console.error('API Error:', error);
+    return NextResponse.json({ success: false, error: 'Load failed' }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { data, yearlyData } = await request.json();
+    const userId = 'default-user';
+    const currentYear = new Date().getFullYear();
+    // Single transaction for all operations
+    await prisma.$transaction(async (tx) => {
+      // Update user profile
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          taxStatus: data.taxStatus,
+          fiGoal: data.fiTarget,
+          fiTargetYear: data.fiYear,
+          lastProfileUpdate: new Date()
+        }
+      });
+
+      // Batch upsert current year data
+      await tx.incomeRecord.upsert({
+        where: { userId_year: { userId, year: currentYear } },
+        update: { totalIncome: data.income, employmentIncome: data.income },
+        create: { userId, year: currentYear, totalIncome: data.income, employmentIncome: data.income }
+      });
+
+      await tx.expenseRecord.upsert({
+        where: { userId_year: { userId, year: currentYear } },
+        update: { 
+          totalExpenses: Number(data.expenses) || 0,
+          savingsRate: data.income > 0 ? ((Number(data.income) - Number(data.expenses)) / Number(data.income)) * 100 : 0,
+          savingsAmount: Number(data.income) - Number(data.expenses)
+        },
+        create: { 
+          userId, 
+          year: currentYear, 
+          totalExpenses: Number(data.expenses) || 0,
+          savingsRate: data.income > 0 ? ((Number(data.income) - Number(data.expenses)) / Number(data.income)) * 100 : 0,
+          savingsAmount: Number(data.income) - Number(data.expenses)
+        }
+      });
+      
+      await tx.savingsRecord.upsert({
+        where: { userId_year: { userId, year: currentYear } },
+        update: { srsContributions: Number(data.srsContributions) || 0 },
+        create: { userId, year: currentYear, srsContributions: Number(data.srsContributions) || 0 }
+      });
+      // Batch upsert historical data if provided
+      if (yearlyData?.length > 0) {
+        for (const yearly of yearlyData) {
+          await tx.incomeRecord.upsert({
+            where: { userId_year: { userId, year: yearly.year } },
+            update: { totalIncome: yearly.income, employmentIncome: yearly.income },
+            create: { userId, year: yearly.year, totalIncome: yearly.income, employmentIncome: yearly.income }
+          });
+
+      await tx.expenseRecord.upsert({
+        where: { userId_year: { userId, year: currentYear } },
+        update: { 
+          totalExpenses: Number(data.expenses) || 0,
+          savingsRate: data.income > 0 ? ((Number(data.income) - Number(data.expenses)) / Number(data.income)) * 100 : 0,
+          savingsAmount: Number(data.income) - Number(data.expenses)
+        },
+        create: { 
+          userId, 
+          year: currentYear, 
+          totalExpenses: Number(data.expenses) || 0,
+          savingsRate: data.income > 0 ? ((Number(data.income) - Number(data.expenses)) / Number(data.income)) * 100 : 0,
+          savingsAmount: Number(data.income) - Number(data.expenses)
+        }
+      });
+      
+      await tx.savingsRecord.upsert({
+        where: { userId_year: { userId, year: currentYear } },
+        update: { srsContributions: Number(data.srsContributions) || 0 },
+        create: { userId, year: currentYear, srsContributions: Number(data.srsContributions) || 0 }
+      });        }
+      }
+    });
+
+    return NextResponse.json({ success: true });
+    
+  } catch (error) {
+    console.error('Save Error:', error);
+    return NextResponse.json({ success: false, error: 'Save failed' }, { status: 500 });
+  }
+}
