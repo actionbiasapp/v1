@@ -17,6 +17,13 @@ import {
   calculateSRSOptimization,
   estimateIncomeFromPortfolio 
 } from '@/app/lib/singaporeTax';
+import { 
+  UnifiedActionItem as ActionItem,
+  TaxIntelligence,
+  IntelligenceReport,
+  normalizeActionItem,
+  CategoryData
+} from '@/app/lib/types/shared';
 
 interface Holding {
   id: string;
@@ -31,90 +38,6 @@ interface Holding {
   location: string;
   quantity?: number;
   costBasis?: number;
-}
-
-interface CategoryData {
-  name: string;
-  holdings: Holding[];
-  currentValue: number;
-  currentPercent: number;
-  target: number;
-  gap: number;
-  gapAmount: number;
-  status: 'perfect' | 'underweight' | 'excess';
-  statusText: string;
-  callout?: string;
-}
-
-interface TaxIntelligence {
-  srsRecommendation?: number;
-  taxSavings?: number;
-  monthlyTarget?: number;
-  urgencyLevel?: string;
-  urgencyDays?: number;
-  employmentPassAdvantage?: number;
-}
-
-// FIXED: Flexible ActionItem interface that supports both API and local formats
-interface ActionItem {
-  id: string;
-  type: 'urgent' | 'opportunity' | 'optimization';
-  
-  // Legacy format (for static/API items)
-  problem?: string;
-  solution?: string;
-  benefit?: string;
-  urgency?: string;
-  
-  // New format (for AI insights)
-  title?: string;
-  description?: string;
-  
-  // Common properties
-  dollarImpact?: number;
-  timeline?: string;
-  actionText: string;
-  isClickable: boolean;
-  priority?: number;
-  category?: string;
-  metadata?: any;
-}
-
-// FIXED: Enhanced PortfolioInsight interface for flexible data handling
-interface EnhancedPortfolioInsight {
-  id: string;
-  type: 'urgent' | 'opportunity' | 'optimization';
-  
-  // Support both API and local formats
-  problem?: string;        // API format
-  solution?: string;       // API format  
-  benefit?: string;        // API format
-  title?: string;          // Local format
-  description?: string;    // Local format
-  
-  dollarImpact?: number;
-  timeline?: string;
-  actionText: string;
-  isClickable: boolean;
-  priority?: number;
-  category?: string;
-  metadata?: any;
-}
-
-interface IntelligenceReport {
-  statusIntelligence: {
-    fiProgress: string;
-    urgentAction: string;
-    deadline: string | null;
-    netWorth: number;
-  };
-  allocationIntelligence: Array<{
-    name: string;
-    status: 'perfect' | 'underweight' | 'excess';
-    callout: string;
-    priority: number;
-  }>;
-  actionIntelligence: ActionItem[];
 }
 
 // Live indicator component
@@ -144,8 +67,8 @@ export default function PortfolioDashboard() {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [displayCurrency, setDisplayCurrency] = useState<CurrencyCode>('SGD');
 
-  // FIXED: Use enhanced interface for better type safety
-  const [dynamicInsights, setDynamicInsights] = useState<EnhancedPortfolioInsight[]>([]);
+  // FIXED: Use unified ActionItem interface
+  const [dynamicInsights, setDynamicInsights] = useState<ActionItem[]>([]);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [isInsightsLive, setIsInsightsLive] = useState(false);
@@ -194,28 +117,7 @@ export default function PortfolioDashboard() {
     { id: '19', symbol: 'USDC', name: 'USD Coin', value: 3000, valueSGD: 3000, valueINR: 190500, valueUSD: 2220, entryCurrency: 'SGD', category: 'Liquidity', location: 'Binance' }
   ], []);
 
-  // ENHANCED: Data normalization helper for consistent insight handling
-  const normalizeInsight = (insight: any): EnhancedPortfolioInsight => {
-    return {
-      id: insight.id,
-      type: insight.type,
-      // Support both formats
-      problem: insight.problem,
-      solution: insight.solution,
-      benefit: insight.benefit,
-      title: insight.title,
-      description: insight.description,
-      dollarImpact: insight.dollarImpact,
-      timeline: insight.timeline,
-      actionText: insight.actionText,
-      isClickable: insight.isClickable,
-      priority: insight.priority,
-      category: insight.category,
-      metadata: insight.metadata
-    };
-  };
-
-  // NEW: Fetch dynamic AI insights
+  // FIXED: Simplified fetch dynamic insights using shared normalization
   const fetchDynamicInsights = useCallback(async () => {
     if (!holdings || holdings.length === 0) {
       console.log('⚠️ No holdings available for AI insights');
@@ -232,8 +134,8 @@ export default function PortfolioDashboard() {
       console.log('AI Insights API Response:', data);
       
       if (data.success && data.insights) {
-        // FIXED: Normalize API insights to our enhanced format
-        const normalizedInsights = data.insights.map(normalizeInsight);
+        // Use shared normalization function
+        const normalizedInsights = data.insights.map(normalizeActionItem);
         setDynamicInsights(normalizedInsights);
         setTaxIntelligence(data.taxIntelligence);
         setIsInsightsLive(true);
@@ -247,7 +149,7 @@ export default function PortfolioDashboard() {
       setInsightsError(error instanceof Error ? error.message : 'Failed to fetch insights');
       setIsInsightsLive(false);
       
-      // Fallback to local analysis if API fails
+      // Fallback to local analysis using shared types
       try {
         const formattedHoldings = holdings.map(h => ({
           id: h.id,
@@ -268,40 +170,10 @@ export default function PortfolioDashboard() {
         const estimatedIncome = estimateIncomeFromPortfolio(totalValue);
         const taxInsights = generateTaxOptimizationInsights(formattedHoldings, totalValue, estimatedIncome);
         
-        // FIXED: Transform to enhanced format with proper normalization
-        const combinedInsights: EnhancedPortfolioInsight[] = [
-          ...localInsights.map(insight => normalizeInsight({
-            id: insight.id,
-            type: insight.type,
-            title: insight.title || insight.problem,
-            description: insight.solution,
-            problem: insight.problem,
-            solution: insight.solution,
-            benefit: insight.benefit,
-            dollarImpact: insight.dollarImpact,
-            timeline: insight.timeline,
-            actionText: insight.actionText,
-            isClickable: insight.isClickable,
-            priority: insight.priority,
-            category: insight.category,
-            metadata: insight.metadata
-          })),
-          ...taxInsights.map(insight => normalizeInsight({
-            id: insight.id,
-            type: insight.type,
-            title: insight.title || insight.problem,
-            description: insight.solution,
-            problem: insight.problem,
-            solution: insight.solution,
-            benefit: insight.benefit,
-            dollarImpact: insight.dollarImpact,
-            timeline: insight.timeline,
-            actionText: insight.actionText,
-            isClickable: insight.isClickable,
-            priority: insight.priority,
-            category: insight.category,
-            metadata: insight.metadata
-          }))
+        // Normalize all insights using shared function
+        const combinedInsights: ActionItem[] = [
+          ...localInsights.map(normalizeActionItem),
+          ...taxInsights.map(normalizeActionItem)
         ];
         
         setDynamicInsights(combinedInsights);
@@ -309,26 +181,55 @@ export default function PortfolioDashboard() {
         // Set basic tax intelligence
         const srsAnalysis = calculateSRSOptimization(estimatedIncome, 0, 'Employment Pass');
         setTaxIntelligence({
-          srsRecommendation: srsAnalysis.recommendedContribution,
-          taxSavings: srsAnalysis.taxSavings,
-          monthlyTarget: srsAnalysis.monthlyTarget,
-          urgencyLevel: srsAnalysis.urgencyLevel,
-          urgencyDays: srsAnalysis.urgencyDays,
-          employmentPassAdvantage: srsAnalysis.employmentPassAdvantage
+          srsOptimization: {
+            remainingRoom: srsAnalysis.recommendedContribution,
+            taxSavings: srsAnalysis.taxSavings,
+            daysToDeadline: srsAnalysis.urgencyDays,
+            monthlyTarget: srsAnalysis.monthlyTarget || 0,
+            urgencyLevel: srsAnalysis.urgencyLevel,
+            maxContribution: 35700,
+            currentContributions: 0,
+            taxBracket: 15
+            
+          },
+          opportunityCost: {
+            monthlyPotentialSavings: srsAnalysis.taxSavings / 12,
+            actionMessage: `Start monthly SRS to capture $${srsAnalysis.taxSavings.toLocaleString()} benefit`,
+            urgencyMessage: `Missing potential tax savings each month`
+          },
+          employmentPassAdvantage: {
+            srsLimitAdvantage: 20700,
+            additionalTaxSavings: srsAnalysis.employmentPassAdvantage || 0,
+            vsComparison: `Additional savings vs Citizens/PRs`
+          }
         });
         
         console.log('✅ Using local AI insights as fallback');
       } catch (localError) {
         console.error('Local analysis also failed:', localError);
         setDynamicInsights([]);
-        // Set default tax intelligence to prevent crashes
+        // Set safe default tax intelligence
         setTaxIntelligence({
-          srsRecommendation: 35700,
-          taxSavings: 5000,
-          monthlyTarget: 2975,
-          urgencyLevel: 'medium',
-          urgencyDays: 175,
-          employmentPassAdvantage: 3000
+          srsOptimization: {
+            remainingRoom: 35700,
+            taxSavings: 5000,
+            daysToDeadline: 175,
+            monthlyTarget: 2975,
+            urgencyLevel: 'medium',
+            maxContribution: 35700,
+            currentContributions: 0,
+            taxBracket: 15
+          },
+          opportunityCost: {
+            monthlyPotentialSavings: 417,
+            actionMessage: "Start SRS contributions for tax benefits",
+            urgencyMessage: "Missing potential monthly tax savings"
+          },
+          employmentPassAdvantage: {
+            srsLimitAdvantage: 20700,
+            additionalTaxSavings: 3000,
+            vsComparison: "Additional savings vs Citizens/PRs"
+          }
         });
       }
     } finally {
@@ -462,7 +363,7 @@ export default function PortfolioDashboard() {
   const fiProgressText = intelligence?.statusIntelligence?.fiProgress || 
     `${((totalValue / 1000000) * 100).toFixed(1)}% to first million`;
   
-  // Group holdings by category with multi-currency support
+  // Group holdings by category with multi-currency support - using CategoryData from shared types
   const categoryData: CategoryData[] = Object.entries(targets).map(([categoryName, target]) => {
     const categoryHoldings = Array.isArray(holdings) ? holdings.filter(h => h.category === categoryName) : [];
     const currentValue = categoryHoldings.reduce((sum, h) => sum + getHoldingDisplayValue(h, displayCurrency), 0);
@@ -566,70 +467,41 @@ export default function PortfolioDashboard() {
     };
   });
 
-  // ENHANCED: Better action item processing with type safety
+  // FIXED: Simplified action items processing using shared normalization
   const actionItems: ActionItem[] = dynamicInsights.length > 0 
-    ? dynamicInsights.map(insight => ({
-        id: insight.id,
-        type: insight.type,
-        // Support both formats
-        title: insight.title,
-        description: insight.description,
-        problem: insight.problem,
-        solution: insight.solution,
-        benefit: insight.benefit,
-        dollarImpact: insight.dollarImpact,
-        timeline: insight.timeline,
-        actionText: insight.actionText,
-        isClickable: insight.isClickable,
-        priority: insight.priority,
-        category: insight.category,
-        metadata: insight.metadata
-      }))
-    : intelligence?.actionIntelligence?.map(action => ({
-        id: action.id,
-        type: action.type,
-        title: action.title,
-        description: action.description,
-        problem: action.problem,
-        solution: action.solution,
-        benefit: action.benefit,
-        dollarImpact: action.dollarImpact,
-        timeline: action.timeline,
-        actionText: action.actionText,
-        isClickable: true,
-        priority: action.priority
-      })) || [
-        // Final fallback static actions
-        {
+    ? dynamicInsights
+    : intelligence?.actionIntelligence?.map(normalizeActionItem) || [
+        // Final fallback static actions with proper normalization
+        normalizeActionItem({
           id: 'srs',
-          type: 'urgent' as const,
+          type: 'urgent',
           problem: 'Missing $5,355 tax savings',
           solution: 'Buy $35,700 VUAA in SRS account',
           benefit: 'Save $5,355 in taxes (15% bracket)',
-          urgency: 'Deadline: Dec 31, 2025',
+          timeline: 'Deadline: Dec 31, 2025',
           actionText: 'Open SRS Account',
           isClickable: true
-        },
-        {
+        }),
+        normalizeActionItem({
           id: 'core-gap',
-          type: 'opportunity' as const, 
+          type: 'opportunity',
           problem: 'Core underweight by 4k',
           solution: 'Transfer from cash → Buy more VUAA or Indian ETFs',
           benefit: 'Reach target allocation, earn 7%/year',
-          urgency: 'Execute this week',
+          timeline: 'Execute this week',
           actionText: 'Transfer & Buy',
           isClickable: true
-        },
-        {
+        }),
+        normalizeActionItem({
           id: 'growth-rebalance',
-          type: 'optimization' as const,
+          type: 'optimization',
           problem: 'Growth slightly overweight',
           solution: 'Consider trimming from top performers when rebalancing',
           benefit: 'Maintain optimal risk balance',
-          urgency: 'Next quarterly review',
+          timeline: 'Next quarterly review',
           actionText: 'Plan Rebalance',
           isClickable: false
-        }
+        })
       ];
 
   if (loading) {
@@ -857,21 +729,21 @@ export default function PortfolioDashboard() {
                 <div className="bg-gray-700/50 rounded-lg p-4">
                   <div className="text-xs text-gray-400 mb-1">SRS OPPORTUNITY</div>
                   <div className="text-2xl font-bold text-emerald-400">
-                    ${taxIntelligence.taxSavings?.toLocaleString() || '6,426'}
+                    ${taxIntelligence.srsOptimization?.taxSavings?.toLocaleString() || '6,426'}
                   </div>
                   <div className="text-xs text-gray-400">Tax savings potential</div>
                 </div>
                 <div className="bg-gray-700/50 rounded-lg p-4">
                   <div className="text-xs text-gray-400 mb-1">EMPLOYMENT PASS ADVANTAGE</div>
                   <div className="text-2xl font-bold text-blue-400">
-                    ${taxIntelligence.employmentPassAdvantage?.toLocaleString() || '3,726'}
+                    ${taxIntelligence.employmentPassAdvantage?.additionalTaxSavings?.toLocaleString() || '3,726'}
                   </div>
                   <div className="text-xs text-gray-400">vs Citizens/PRs</div>
                 </div>
                 <div className="bg-gray-700/50 rounded-lg p-4">
                   <div className="text-xs text-gray-400 mb-1">MONTHLY TARGET</div>
                   <div className="text-2xl font-bold text-yellow-400">
-                    ${taxIntelligence.monthlyTarget?.toLocaleString() || '2,975'}
+                    ${taxIntelligence.srsOptimization?.monthlyTarget?.toLocaleString() || '2,975'}
                   </div>
                   <div className="text-xs text-gray-400">To maximize by Dec 31</div>
                 </div>
@@ -881,7 +753,7 @@ export default function PortfolioDashboard() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-gray-400">SRS Contribution Progress</span>
                   <span className="text-sm text-gray-400">
-                    {taxIntelligence.urgencyDays || 175} days remaining
+                    {taxIntelligence.srsOptimization?.daysToDeadline || 175} days remaining
                   </span>
                 </div>
                 <div className="w-full bg-gray-600 rounded-full h-2">
@@ -891,7 +763,7 @@ export default function PortfolioDashboard() {
                   ></div>
                 </div>
                 <div className="text-xs text-gray-400 mt-1">
-                  $0 contributed of ${taxIntelligence.srsRecommendation?.toLocaleString() || '35,700'} limit
+                  $0 contributed of ${taxIntelligence.srsOptimization?.maxContribution?.toLocaleString() || '35,700'} limit
                 </div>
               </div>
               
@@ -916,7 +788,7 @@ export default function PortfolioDashboard() {
   );
 }
 
-// Enhanced ActionBiasCard with AI insights support and flexible data handling
+// FIXED: Enhanced ActionBiasCard using unified interface
 function ActionBiasCard({ 
   action, 
   isLive, 
@@ -957,12 +829,6 @@ function ActionBiasCard({
     return action.type.toUpperCase();
   };
 
-  // ENHANCED: Smart content display with fallback handling
-  const getDisplayTitle = () => action.title || action.problem || 'Action Required';
-  const getDisplayDescription = () => action.description || action.solution || 'Action available';
-  const getDisplayBenefit = () => action.benefit;
-  const getDisplayTimeline = () => action.timeline || action.urgency;
-
   return (
     <div className={`rounded-lg p-4 border ${getTypeColor()}`}>
       <div className="flex items-center justify-between mb-3">
@@ -981,24 +847,23 @@ function ActionBiasCard({
       </div>
       
       <div className="space-y-2 mb-4">
-        {/* Smart content display supporting both formats */}
         <div>
           <span className="text-sm text-white font-medium">
-            {getDisplayTitle()}
+            {action.title}
           </span>
         </div>
         
         <div>
           <span className="text-sm text-gray-300">
-            {getDisplayDescription()}
+            {action.description}
           </span>
         </div>
         
-        {/* Show benefit if available (legacy format) */}
-        {getDisplayBenefit() && (
+        {/* Show benefit if available (legacy support) */}
+        {action.benefit && (
           <div>
             <span className="text-xs text-gray-400 block">BENEFIT:</span>
-            <span className="text-sm text-green-300">{getDisplayBenefit()}</span>
+            <span className="text-sm text-green-300">{action.benefit}</span>
           </div>
         )}
         
@@ -1013,10 +878,10 @@ function ActionBiasCard({
         )}
         
         {/* Show timeline */}
-        {getDisplayTimeline() && (
+        {action.timeline && (
           <div>
             <span className="text-xs text-gray-400 block">TIMELINE:</span>
-            <span className="text-xs text-orange-300">{getDisplayTimeline()}</span>
+            <span className="text-xs text-orange-300">{action.timeline}</span>
           </div>
         )}
       </div>
