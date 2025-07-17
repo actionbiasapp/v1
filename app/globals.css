@@ -426,20 +426,78 @@ body {
   gap: 0.5rem;
 }
 
-/* Mobile responsive */
+/* ============================================ */
+/*     MOBILE PORTFOLIO GRID FIX              */
+/*     Add this to the mobile section         */
+/* ============================================ */
+
+/* Enhanced Mobile responsive - REPLACE the existing mobile section */
 @media (max-width: 768px) {
+  /* Mobile: Single column with proper expansion */
   .fixed-portfolio-grid {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto auto;
+    gap: 1rem; /* Tighter spacing on mobile */
+  }
+  
+  /* CRITICAL: Override all desktop expansion classes on mobile */
+  .fixed-portfolio-grid[class*="grid-"][class*="-expanded"] {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto auto auto auto !important;
+  }
+  
+  /* Reset all cards to natural stacking order on mobile */
+  .card-core, 
+  .card-growth, 
+  .card-hedge, 
+  .card-liquidity {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
+  
+  /* Mobile expansion behavior - smooth and natural */
+  .fixed-portfolio-card {
+    min-height: 150px; /* Smaller base height on mobile */
+    padding: 1rem; /* Less padding */
   }
   
   .fixed-portfolio-card.expanded {
-    grid-row: auto;
+    /* Expanded cards get more space but stay in flow */
+    min-height: auto;
+    max-height: none; /* Remove height restriction */
+    margin-bottom: 1rem; /* Extra space after expanded card */
+    
+    /* Subtle emphasis without breaking layout */
+    border-color: rgba(100, 116, 139, 0.8);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   }
   
-  .card-core, .card-growth, .card-hedge, .card-liquidity {
-    grid-column: 1;
-    grid-row: auto;
+  .fixed-portfolio-card.compressed {
+    /* On mobile, compressed cards are just slightly dimmed */
+    opacity: 0.7;
+    transform: none; /* No scaling on mobile - keep touch targets */
+  }
+  
+  /* Mobile-specific expanded content */
+  .fixed-portfolio-card.expanded .expanded-content {
+    max-height: none; /* Remove scroll restriction */
+    overflow-y: visible; /* No scrolling within cards */
+  }
+  
+  /* Mobile card headers - larger touch targets */
+  .card-header {
+    min-height: 44px; /* iOS touch target */
+    padding: 0.5rem 0;
+  }
+  
+  .expand-indicator {
+    font-size: 1.2rem; /* Larger touch target */
+  }
+  
+  /* Mobile button optimization */
+  .fixed-portfolio-card button {
+    min-height: 44px;
+    padding: 0.75rem 1rem;
   }
 }
 
