@@ -15,6 +15,8 @@ import { type Intelligence } from '@/app/lib/types/shared';
 import { usePortfolioData } from '@/app/hooks/usePortfolioData';
 import { usePortfolioCategoryProcessor } from './PortfolioCategoryProcessor';
 import { useActionItemsProcessor } from './ActionItemsProcessor';
+import AllocationGapChart from './AllocationGapChart';
+import AllocationChartCard from './AllocationChartCard';
 
 // Live indicator component
 const LiveIndicator = () => (
@@ -39,6 +41,7 @@ export default function PortfolioDashboard() {
   const [displayCurrency, setDisplayCurrency] = useState<CurrencyCode>('SGD');
   const [isAllocationEditorOpen, setIsAllocationEditorOpen] = useState(false);
   const [allocationTargets, setAllocationTargets] = useState(DEFAULT_TARGETS);
+  const [showChartView, setShowChartView] = useState(false);
 
   // Portfolio Data Hook - handles all API integration
   const {
@@ -179,6 +182,10 @@ export default function PortfolioDashboard() {
 
         {/* Portfolio Allocation with Fixed Portfolio Grid */}
         <div className="mb-6">
+          
+          
+          {/* Portfolio Allocation with Fixed Portfolio Grid */}
+        <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-200">
               Portfolio Allocation
@@ -207,6 +214,12 @@ export default function PortfolioDashboard() {
             </div>
           </div>
           
+          {/* ADD ALLOCATION GAP CHART HERE */}
+          <AllocationGapChart 
+            categories={enhancedCategoryData}
+            className="mb-6"
+          />
+          
           <FixedPortfolioGrid
             categories={enhancedCategoryData}
             totalValue={totalValue}
@@ -215,6 +228,9 @@ export default function PortfolioDashboard() {
             displayCurrency={displayCurrency}
             onHoldingsUpdate={fetchHoldings}
           />
+        </div>
+
+        
         </div>
 
         {/* AI Insights Section - Extracted Component */}
