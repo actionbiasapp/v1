@@ -44,7 +44,6 @@ export default function FinancialSetupButton({ onProfileUpdate }: FinancialSetup
             
             // Optional income
             bonusIncome: undefined, // Not in current API
-            otherIncome: undefined, // Not in current API
             
             // Portfolio targets (use defaults if not in API)
             coreTarget: 25,
@@ -60,8 +59,6 @@ export default function FinancialSetupButton({ onProfileUpdate }: FinancialSetup
             srsAutoOptimize: true,
             
             // FI preferences  
-            customFIAmount: undefined,
-            customTargetYear: undefined
           };
           
           setCurrentProfile(loadedProfile);
@@ -134,7 +131,7 @@ export default function FinancialSetupButton({ onProfileUpdate }: FinancialSetup
 
   const { percentage, text } = getCompletionStatus();
   
-  // Consistent button styling without expansion
+  // Responsive button styling - simplified for mobile
   const getButtonStyles = () => {
     if (percentage === 0) {
       return {
@@ -158,22 +155,22 @@ export default function FinancialSetupButton({ onProfileUpdate }: FinancialSetup
   
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 px-4 py-2 bg-gray-700/50 text-gray-300 rounded-lg border border-gray-600/50">
+      <div className="flex items-center gap-2 px-3 py-2 bg-gray-700/50 text-gray-300 rounded-lg border border-gray-600/50">
         <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-sm font-medium">Loading...</span>
+        <span className="text-sm font-medium hidden sm:inline">Loading...</span>
       </div>
     );
   }
 
   return (
     <>
-      {/* Consistent button size with professional hover behavior */}
+      {/* Mobile-optimized button with responsive layout */}
       <button
         onClick={handleOpenModal}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className={`
-          flex items-center gap-3 px-4 py-2 rounded-lg border transition-all duration-200 font-medium text-sm
+          flex items-center gap-2 lg:gap-3 px-3 lg:px-4 py-2 rounded-lg border transition-all duration-200 font-medium text-sm
           ${buttonClass}
           ${isHovered ? 'scale-105' : ''}
         `}
@@ -182,17 +179,20 @@ export default function FinancialSetupButton({ onProfileUpdate }: FinancialSetup
         {/* Icon */}
         <span className="text-base">{icon}</span>
         
-        {/* Main Content - Always same width, no expansion */}
-        <div className="flex flex-col items-start min-w-[100px]">
-          <span className="text-sm font-medium whitespace-nowrap">Financial Setup</span>
+        {/* Main Content - Responsive layout */}
+        <div className="flex flex-col items-start min-w-0">
+          <span className="text-sm font-medium whitespace-nowrap">
+            <span className="hidden sm:inline">Financial Setup</span>
+            <span className="sm:hidden">Setup</span>
+          </span>
           <span className="text-xs opacity-90 whitespace-nowrap">{text}</span>
         </div>
         
-        {/* Progress Indicator - Always present, consistent size */}
-        <div className="flex flex-col items-center ml-2">
-          <div className="w-8 h-8 relative">
+        {/* Progress Indicator - Smaller on mobile, hidden on very small screens */}
+        <div className="hidden sm:flex flex-col items-center ml-2 lg:ml-2">
+          <div className="w-6 h-6 lg:w-8 lg:h-8 relative">
             {/* Background circle */}
-            <svg className="w-8 h-8 transform -rotate-90" viewBox="0 0 32 32">
+            <svg className="w-6 h-6 lg:w-8 lg:h-8 transform -rotate-90" viewBox="0 0 32 32">
               <circle
                 cx="16"
                 cy="16"
@@ -223,6 +223,13 @@ export default function FinancialSetupButton({ onProfileUpdate }: FinancialSetup
               </span>
             </div>
           </div>
+        </div>
+        
+        {/* Mobile-only percentage indicator (simple) */}
+        <div className="sm:hidden flex items-center">
+          <span className="text-xs font-bold text-white bg-white/20 px-1.5 py-0.5 rounded">
+            {percentage}
+          </span>
         </div>
       </button>
 

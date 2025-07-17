@@ -1,30 +1,119 @@
 // app/lib/types/shared.ts
 // Enhanced unified interface system for Action Bias V5.3D
 
+// 1. Holding interface - needed by 3 components
+export interface Holding {
+  id: string;
+  symbol: string;
+  name: string;
+  valueSGD: number;
+  valueINR: number;
+  valueUSD: number;
+  entryCurrency: string;
+  category: string;
+  location: string;
+  quantity?: number | null;
+  costBasis?: number | null;
+  // Backward compatibility fields
+  value?: number;
+  currentValue?: number;
+}
+
 // UNIFIED ACTION ITEM INTERFACE
 // Supports both API responses and local analysis formats
 export interface UnifiedActionItem {
   id: string;
-  type: 'urgent' | 'opportunity' | 'optimization';
+  type: 'urgent' | 'opportunity' | 'optimization' | 'warning';
+  category: 'tax' | 'portfolio' | 'allocation' | 'risk' | 'opportunity' | 'performance';
+  source: 'intelligence' | 'insights' | 'analysis';
   
-  // PRIMARY DISPLAY PROPERTIES (always present)
-  title: string;        // Main heading for display
-  description: string;  // Main content for display
+  // Core content - FIXED: Added missing title property
+  title: string;                   // PRIMARY DISPLAY TITLE
+  problem: string;
+  solution: string;
+  benefit: string;
+  timeline: string;
+  actionText: string;
   
-  // LEGACY COMPATIBILITY (optional, for API backwards compatibility)
-  problem?: string;     // Legacy API format support
-  solution?: string;    // Legacy API format support
-  benefit?: string;     // Additional context/legacy benefit text
-  urgency?: string;     // Legacy timeline format
+  // Legacy compatibility - these may be used by some components
+  description?: string;            // Fallback for components expecting description
   
-  // ACTION PROPERTIES
-  dollarImpact?: number;   // Financial impact in user's currency
-  timeline?: string;       // When to act (standardized format)
-  actionText: string;      // Button text
-  isClickable: boolean;    // Whether action is interactive
-  priority?: number;       // 1-10 priority for sorting
-  category?: string;       // 'tax', 'allocation', 'risk', 'performance'
-  metadata?: any;          // Flexible additional data
+  // Metadata
+  priority: number;
+  dollarImpact?: number;
+  isClickable: boolean;
+  completed?: boolean;
+  
+  // Action handling
+  onClick?: () => void;
+  data?: any;
+}
+
+// 2. Intelligence interface - needed by ActionItemsProcessor
+export interface Intelligence {
+  statusIntelligence?: {
+    fiProgress?: string;
+    urgentAction?: string;
+    deadline?: string;
+  };
+  actionIntelligence?: Array<{
+    id: string;
+    type: string;
+    problem: string;
+    solution: string;
+    benefit: string;
+    timeline: string;
+    actionText: string;
+    isClickable: boolean;
+  }>;
+  allocationIntelligence?: Array<{
+    name: string;
+    status: 'perfect' | 'underweight' | 'excess';
+    callout: string;
+  }>;
+}
+
+// 3. NetWorth Tracker Types - Added for component extraction
+export interface YearlyData {
+  year: number;
+  netWorth: number;
+  annualInvestment: number;
+  marketGains: number; // calculated field
+  returnPercent: number; // calculated field
+}
+
+export interface EditFormData {
+  year: string;
+  netWorth: string;
+  annualInvestment: string;
+}
+
+// 4. Portfolio Form Types - Extracted from FixedPortfolioGrid.tsx
+export interface HoldingFormData {
+  symbol: string;
+  name: string;
+  amount: number;
+  currency: 'SGD' | 'USD' | 'INR';
+  location: string;
+}
+
+export interface PortfolioCardProps {
+  category: CategoryData;
+  totalValue: number;
+  isExpanded: boolean;
+  isCompressed: boolean;
+  displayCurrency: 'SGD' | 'USD' | 'INR';
+  onToggleExpand: (categoryName: string) => void;
+  onHoldingsUpdate?: () => void;
+}
+
+export interface IndividualHoldingProps {
+  holding: Holding;
+  categoryCurrentValue: number;
+  displayCurrency: 'SGD' | 'USD' | 'INR';
+  loading: boolean;
+  onEdit: (holding: Holding) => void;
+  onDelete: (holdingId: string) => void;
 }
 
 // TAX INTELLIGENCE INTERFACE
@@ -54,187 +143,41 @@ export interface TaxIntelligence {
   };
 }
 
-// ENHANCED FINANCIAL PROFILE INTERFACE
-// Complete user financial data model with V5.3D enhancements
+// ENHANCED FINANCIAL PROFILE INTERFACE (MVP SIMPLIFIED)
+// Removed Phase 2 expansion fields per 80/20 principle
 export interface FinancialProfile {
-  // BASIC INCOME & TAX (Current V5.3C fields)
+  // BASIC INCOME & TAX
   annualIncome?: number;
   bonusIncome?: number;
-  otherIncome?: number;
   incomeCurrency: 'SGD' | 'USD' | 'INR';
   taxStatus: 'Employment Pass' | 'Citizen' | 'PR';
   
-  // BASIC SRS OPTIMIZATION (Current V5.3C fields)
+  // BASIC SRS OPTIMIZATION
   currentSRSContributions: number;
-  srsMonthlyTarget?: number;
   srsAutoOptimize: boolean;
-  srsPreferredProvider?: string;
   
-  // BASIC FI GOALS (Current V5.3C fields)
+  // BASIC FI GOALS
   fiGoal: number;                  // Default 2500000
   fiTargetYear: number;            // Default 2032
-  customFIAmount?: number;         // Override default
-  customTargetYear?: number;       // Override default
-  leanFIAmount?: number;           // Geographic arbitrage target
   firstMillionTarget: boolean;     // Milestone tracking
   
-  // BASIC PORTFOLIO TARGETS (Current V5.3C fields)
+  // BASIC PORTFOLIO TARGETS
   coreTarget: number;              // Default 25%
   growthTarget: number;            // Default 55%
   hedgeTarget: number;             // Default 10%
   liquidityTarget: number;         // Default 10%
   rebalanceThreshold: number;      // Default 5%
   
-  // ENHANCED EXPENSES & SAVINGS (Tab 4 Fields)
+  // SIMPLIFIED EXPENSES (MVP)
   annualExpenses?: number;         // Total annual expenses
-  monthlyExpenses?: number;        // Monthly expenses (calculated)
-  targetSavingsRate?: number;      // Target savings rate %
-  calculatedSavingsRate?: number;  // Auto-calculated from income/expenses
   emergencyFundTarget?: number;    // Emergency fund goal (months)
-  emergencyFundCurrent?: number;   // Current emergency fund amount
-  discretionarySpending?: number;  // Monthly discretionary spending
-  
-  // Detailed expense breakdown (Tab 4)
-  expenseBreakdown?: {
-    housing: number;               // Rent/mortgage, utilities
-    transportation: number;        // Car, public transport, fuel
-    food: number;                  // Groceries, dining out
-    healthcare: number;            // Insurance, medical expenses
-    utilities: number;             // Phone, internet, electricity
-    entertainment: number;         // Movies, hobbies, subscriptions
-    other: number;                 // Miscellaneous expenses
-  };
-  
-  // Financial health metrics (Tab 4)
-  financialHealthScore?: number;   // 0-100 calculated score
-  savingsAllocation?: {
-    emergencyFund: number;         // % to emergency fund
-    investments: number;           // % to investments
-    srs: number;                   // % to SRS
-    other: number;                 // % to other savings
-  };
   
   // PROFILE MANAGEMENT
   profileCompleteness: number;     // 0-100%
   lastProfileUpdate?: Date;
-  
-  // V5.3D EXPANSION FIELDS (Ready for Phase 2 implementation)
-  // These will be implemented in Phase 2 of V5.3D
-  
-  // Multi-year income tracking (Phase 2)
-  incomeHistory?: Array<{
-    year: number;
-    employmentIncome: number;
-    bonusIncome: number;
-    investmentIncome: number;
-    businessIncome: number;
-    otherIncome: number;
-    totalIncome: number;
-    currency: 'SGD' | 'USD' | 'INR';
-    taxesPaid: number;
-    notes?: string;
-  }>;
-  
-  // Comprehensive expenses tracking (Phase 2)
-  expenseHistory?: Array<{
-    year: number;
-    totalExpenses: number;
-    currency: 'SGD' | 'USD' | 'INR';
-    savingsRate: number;
-    notes?: string;
-  }>;
-  
-  // Multi-year savings & investments (Phase 2)
-  savingsHistory?: Array<{
-    year: number;
-    totalSavings: number;
-    investmentSavings: number;
-    emergencyFund: number;
-    srsContributions: number;
-    cpfContributions: number;
-    otherSavings: number;
-    currency: 'SGD' | 'USD' | 'INR';
-    notes?: string;
-  }>;
-  
-  // Net worth tracking (Phase 2)
-  netWorthHistory?: Array<{
-    year: number;
-    month?: number;
-    totalAssets: number;
-    totalLiabilities: number;
-    netWorth: number;
-    portfolioValue: number;
-    realEstate: number;
-    cash: number;
-    other: number;
-    currency: 'SGD' | 'USD' | 'INR';
-    notes?: string;
-  }>;
-  
-  // Enhanced portfolio allocation (Phase 2)
-  portfolioAllocation?: {
-    coreTarget: number;
-    growthTarget: number;
-    hedgeTarget: number;
-    liquidityTarget: number;
-    rebalanceThreshold: number;
-    customAllocationName?: string;
-    lastUpdated: Date;
-  };
-  
-  // Enhanced SRS planning (Phase 2)
-  srsPlanning?: {
-    multiYearContributions: Array<{
-      year: number;
-      plannedContribution: number;
-      actualContribution: number;
-      taxSavings: number;
-      provider: string;
-    }>;
-    autoOptimize: boolean;
-    monthlyTarget: number;
-    projectedTotal: number;
-  };
-  
-  // Enhanced FI planning (Phase 2)
-  fiPlanning?: {
-    customFIAmount: number;
-    customTargetYear: number;
-    leanFIAmount: number;
-    coastFIAmount: number;
-    baristaFIAmount: number;
-    fiProgressHistory: Array<{
-      year: number;
-      netWorth: number;
-      fiProgress: number;
-      yearsRemaining: number;
-    }>;
-    geographicPlans: {
-      singapore: { livingExpenses: number; feasible: boolean; };
-      malaysia: { livingExpenses: number; feasible: boolean; };
-      thailand: { livingExpenses: number; feasible: boolean; };
-      philippines: { livingExpenses: number; feasible: boolean; };
-      custom?: { location: string; livingExpenses: number; feasible: boolean; };
-    };
-  };
-  
-  // Profile metadata (Phase 2)
-  profileMetadata?: {
-    profileCompleteness: number;
-    dataQuality: number;
-    lastUpdated: Date;
-    yearsOfData: number;
-    preferredCurrency: 'SGD' | 'USD' | 'INR';
-    dataPrivacy: {
-      shareAnonymized: boolean;
-      shareWithAdvisor: boolean;
-    };
-  };
 }
 
 // PORTFOLIO CATEGORY INTERFACE
-// Enhanced category data with intelligence
 export interface CategoryData {
   name: string;
   holdings: any[];                 // Holdings array
@@ -255,7 +198,6 @@ export interface CategoryData {
 }
 
 // INTELLIGENCE REPORT INTERFACE
-// Complete intelligence system response
 export interface IntelligenceReport {
   statusIntelligence: {
     fiProgress: string;             // "48.7% to first million"
@@ -293,31 +235,30 @@ export interface IntelligenceReport {
 }
 
 // DATA NORMALIZATION HELPERS
-// Standardized data transformation functions
-
 export function normalizeActionItem(item: any): UnifiedActionItem {
   return {
     id: item.id || `action-${Date.now()}`,
     type: item.type || 'optimization',
+    category: item.category || 'portfolio',
+    source: item.source || 'analysis',
     
-    // Primary display properties - smart fallback
+    // Primary display properties - smart fallback with title priority
     title: item.title || item.problem || 'Action Required',
-    description: item.description || item.solution || 'Action available',
+    problem: item.problem || item.description || 'Portfolio optimization available',
+    solution: item.solution || 'Take recommended action',
+    benefit: item.benefit || 'Improve portfolio performance',
+    timeline: item.timeline || 'When convenient',
+    actionText: item.actionText || 'Take Action',
     
     // Legacy compatibility
-    problem: item.problem,
-    solution: item.solution,
-    benefit: item.benefit,
-    urgency: item.urgency,
+    description: item.description || item.problem,
     
-    // Action properties
-    dollarImpact: item.dollarImpact || 0,
-    timeline: item.timeline || item.urgency || 'When convenient',
-    actionText: item.actionText || 'Take Action',
-    isClickable: item.isClickable !== undefined ? item.isClickable : true,
+    // Metadata
     priority: item.priority || 5,
-    category: item.category,
-    metadata: item.metadata
+    dollarImpact: item.dollarImpact || 0,
+    isClickable: item.isClickable !== undefined ? item.isClickable : true,
+    completed: item.completed || false,
+    data: item.metadata || item.data
   };
 }
 
@@ -343,110 +284,48 @@ export function createDefaultFinancialProfile(): FinancialProfile {
     liquidityTarget: 10,
     rebalanceThreshold: 5,
     
-    // Expense defaults (NEW)
-    emergencyFundTarget: 6, // 6 months
-    
     // Profile management
     profileCompleteness: 0
   };
 }
 
-// ENHANCED: Updated completion calculation with Tab 4 fields
+// SIMPLIFIED: Profile completeness calculation (80/20 applied)
 export function calculateProfileCompleteness(profile: Partial<FinancialProfile>): number {
-  // Enhanced calculation including Tab 4 fields
-  const currentModalFields = [
-    // Income & Tax Tab (30% weight - most critical)
-    { field: 'annualIncome', weight: 25, required: true },
-    { field: 'taxStatus', weight: 5, required: true },
-    
-    // SRS Optimization Tab (30% weight - very important)
-    { field: 'currentSRSContributions', weight: 20, required: true },
-    { field: 'srsAutoOptimize', weight: 10, required: false },
-    
-    // FI Milestones Tab (20% weight - planning)
-    { field: 'customFIAmount', weight: 12, required: false },
-    { field: 'customTargetYear', weight: 8, required: false },
-    
-    // Expenses & Savings Tab (20% weight - financial health)
-    { field: 'annualExpenses', weight: 12, required: false },
-    { field: 'emergencyFundTarget', weight: 8, required: false }
+  // Simplified calculation focusing on core fields only
+  const coreFields = [
+    { field: 'annualIncome', weight: 40 },      // Most critical
+    { field: 'currentSRSContributions', weight: 30 }, // Tax optimization
+    { field: 'annualExpenses', weight: 20 },    // Financial health
+    { field: 'emergencyFundTarget', weight: 10 } // Planning
   ];
   
   let completeness = 0;
   
-  currentModalFields.forEach(({ field, weight, required }) => {
+  coreFields.forEach(({ field, weight }) => {
     const value = (profile as any)[field];
+    const hasValue = value !== null && value !== undefined && value !== '';
     
-    // Check if field has meaningful data
-    const hasValue = value !== null && value !== undefined && value !== 0 && value !== '';
-    
-    // For required fields, must have value to get points
-    // For optional fields, give partial credit for existence
     if (hasValue) {
       completeness += weight;
-    } else if (!required && (value === false || value === 0)) {
-      // Boolean false or 0 are still valid selections for optional fields
-      completeness += weight * 0.5;
     }
   });
   
   return Math.min(Math.round(completeness), 100);
 }
 
-// EXPENSE CALCULATION HELPERS
-// Helper functions for Tab 4 calculations
-
+// SIMPLIFIED: Savings rate calculation
 export function calculateSavingsRate(annualIncome?: number, annualExpenses?: number): number {
   if (!annualIncome || !annualExpenses || annualIncome <= 0) return 0;
   return Math.max(0, ((annualIncome - annualExpenses) / annualIncome) * 100);
 }
 
-export function calculateFinancialHealthScore(profile: FinancialProfile): number {
-  let score = 0;
-  let factors = 0;
-  
-  // Factor 1: Savings Rate (40 points)
-  if (profile.calculatedSavingsRate) {
-    factors++;
-    if (profile.calculatedSavingsRate >= 50) score += 40;
-    else if (profile.calculatedSavingsRate >= 30) score += 30;
-    else if (profile.calculatedSavingsRate >= 20) score += 20;
-    else if (profile.calculatedSavingsRate >= 10) score += 10;
-  }
-  
-  // Factor 2: Emergency Fund (30 points)
-  if (profile.emergencyFundTarget && profile.emergencyFundCurrent && profile.monthlyExpenses) {
-    factors++;
-    const monthsCovered = profile.emergencyFundCurrent / profile.monthlyExpenses;
-    if (monthsCovered >= profile.emergencyFundTarget) score += 30;
-    else if (monthsCovered >= profile.emergencyFundTarget * 0.75) score += 20;
-    else if (monthsCovered >= profile.emergencyFundTarget * 0.5) score += 10;
-  }
-  
-  // Factor 3: SRS Optimization (30 points)
-  if (profile.currentSRSContributions !== undefined) {
-    factors++;
-    const maxSRS = profile.taxStatus === 'Employment Pass' ? 35700 : 15000;
-    const utilizationRate = profile.currentSRSContributions / maxSRS;
-    if (utilizationRate >= 0.8) score += 30;
-    else if (utilizationRate >= 0.5) score += 20;
-    else if (utilizationRate >= 0.2) score += 10;
-  }
-  
-  // Return weighted average
-  return factors > 0 ? Math.round(score / factors * (100 / 100)) : 0;
-}
-
 // TYPE GUARDS
-// Runtime type checking for enhanced safety
-
 export function isUnifiedActionItem(item: any): item is UnifiedActionItem {
   return (
     typeof item === 'object' &&
     typeof item.id === 'string' &&
     typeof item.type === 'string' &&
     typeof item.title === 'string' &&
-    typeof item.description === 'string' &&
     typeof item.actionText === 'string' &&
     typeof item.isClickable === 'boolean'
   );

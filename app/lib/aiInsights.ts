@@ -1,19 +1,7 @@
+import { Holding } from "./types/shared.js";
 // app/lib/aiInsights.ts - Portfolio Analysis Engine
 import { type CurrencyCode } from './currency';
 
-interface Holding {
-  id: string;
-  symbol: string;
-  name: string;
-  valueSGD: number;
-  valueINR: number;
-  valueUSD: number;
-  entryCurrency: string;
-  category: string;
-  location: string;
-  quantity?: number;
-  costBasis?: number;
-}
 
 interface CategoryAnalysis {
   name: string;

@@ -3,14 +3,14 @@ import { PrismaClient } from '@prisma/client';
 import { 
   analyzePortfolioIntelligence, 
   getFallbackIntelligence,
-  type Holding,
   type UserProfile 
 } from '@/app/lib/portfolioIntelligence';
+import { type Holding } from '@/app/lib/types/shared';
 import { 
   generateTaxIntelligence, 
   convertTaxIntelligenceToActions, 
   estimateIncomeFromPortfolio 
-} from '@/app/lib/taxIntelligence';
+} from '@/app/lib/singaporeTax';
 
 const prisma = new PrismaClient();
 const rateLimits = new Map<string, { count: number; resetTime: number }>();
@@ -101,14 +101,14 @@ export async function GET() {
       'SGD'
     );
     
-    // NEW: Tax intelligence generation
+    // CONSOLIDATED: Tax intelligence generation (now from singaporeTax.ts)
     const taxIntelligence = generateTaxIntelligence(
       estimatedIncome, 
       0, // TODO: Get actual SRS contributions from user profile
       'Employment Pass'
     );
     
-    // NEW: Convert tax intelligence to action items
+    // CONSOLIDATED: Convert tax intelligence to action items (now from singaporeTax.ts)
     const taxActions = convertTaxIntelligenceToActions(taxIntelligence);
     
     // ENHANCED: Merge tax actions with existing portfolio actions
@@ -122,7 +122,7 @@ export async function GET() {
     // ENHANCED: Status intelligence with tax insights
     const enhancedStatusIntelligence = {
       ...intelligenceReport.statusIntelligence,
-      // NEW: Tax-specific status indicators
+      // Tax-specific status indicators
       srsDeadline: `${taxIntelligence.srsOptimization.daysToDeadline} days`,
       taxSavingsAvailable: taxIntelligence.srsOptimization.taxSavings,
       hasUrgentTaxActions: taxActions.some(a => a.type === 'urgent'),
@@ -140,7 +140,7 @@ export async function GET() {
       srsOpportunity: taxIntelligence.srsOptimization.taxSavings
     });
     
-    // CRITICAL FIX: Match the exact structure your dashboard expects
+    // Match the exact structure your dashboard expects
     return NextResponse.json({
       success: true,
       intelligence: {
@@ -165,12 +165,11 @@ export async function GET() {
       metadata: {
         generated: intelligenceReport.generated,
         nextRefresh: intelligenceReport.nextRefresh,
-        version: '1.1.0', // Bumped version for tax enhancement
+        version: '1.3.0', // Version bump for Phase 1 completion
         costProfile: 'zero-ai-costs',
         userId: userId,
         holdingsCount: formattedHoldings.length,
-        // NEW: Tax intelligence metadata
-        taxEnhancement: 'active',
+        taxEnhancement: 'consolidated-singapore-tax',
         incomeEstimation: 'conservative-default'
       }
     });

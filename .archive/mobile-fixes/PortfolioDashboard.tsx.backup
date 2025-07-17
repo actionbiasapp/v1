@@ -115,10 +115,13 @@ export default function PortfolioDashboard() {
     <div className="min-h-screen bg-gray-900 text-white p-4">
       <div className="max-w-6xl mx-auto">
         {/* Header with Currency Switcher and Intelligence Status */}
-        <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
-          <h1 className="text-2xl font-bold text-white">Action Bias Portfolio</h1>
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-white">Action Bias Portfolio</h1>
+            {(isInsightsLive || isIntelligenceLive) && <LiveIndicator />}
+          </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             <CurrencyToggleSimple 
               displayCurrency={displayCurrency}
               onCurrencyChange={setDisplayCurrency}

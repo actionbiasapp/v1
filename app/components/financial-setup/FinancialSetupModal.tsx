@@ -134,16 +134,13 @@ export default function FinancialSetupModal({
       fiTargetYear: fiData.targetYear,
       firstMillionTarget: true,
       bonusIncome: undefined,
-      otherIncome: undefined,
       coreTarget: 25,
       growthTarget: 55,
       hedgeTarget: 10,
       liquidityTarget: 10,
       rebalanceThreshold: 5,
       profileCompleteness: calculateCompleteness(),
-      srsAutoOptimize: true,
-      customFIAmount: undefined,
-      customTargetYear: undefined
+      srsAutoOptimize: true
     };
   };
 

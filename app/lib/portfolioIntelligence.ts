@@ -1,21 +1,15 @@
-// /app/lib/portfolioIntelligence.ts - Main Intelligence Engine
+// /app/lib/portfolioIntelligence.ts - Simplified Portfolio Intelligence Engine (MVP)
+// 80/20 optimization: Focus on core value, eliminate over-engineering
+
 import { type CurrencyCode, getHoldingDisplayValue } from './currency';
+import { 
+  calculateSRSOptimization, 
+  calculateTaxBracket,
+  generateTaxIntelligence 
+} from './singaporeTax';
+import { type Holding } from './types/shared';
 
-// Core types for intelligence system
-export interface Holding {
-  id: string;
-  symbol: string;
-  name: string;
-  valueSGD: number;
-  valueINR: number;
-  valueUSD: number;
-  entryCurrency: string;
-  category: string;
-  location: string;
-  quantity?: number;
-  costBasis?: number;
-}
-
+// Simplified interfaces - removed over-engineering
 export interface UserProfile {
   id: string;
   taxStatus: 'Employment Pass' | 'Citizen' | 'PR';
@@ -64,7 +58,6 @@ export interface PortfolioIntelligenceReport {
     primaryMessage: string;
     tone: 'celebration' | 'urgency' | 'guidance' | 'reassurance';
     supportingMessages: string[];
-    confidence: 'high' | 'medium' | 'low';
   };
   employmentPassIntel?: {
     srsOpportunity: any;
@@ -85,7 +78,7 @@ const ALLOCATION_TARGETS = {
 };
 
 /**
- * Main Portfolio Intelligence Function
+ * Main Portfolio Intelligence Function (SIMPLIFIED)
  * Analyzes portfolio state and generates intelligent insights
  * Zero AI API costs - pure algorithmic analysis
  */
@@ -105,13 +98,13 @@ export function analyzePortfolioIntelligence(
   // Generate opportunities and actions
   const opportunities = detectPortfolioOpportunities(allocationAnalysis, totalValue, user);
   
-  // Employment Pass specific analysis
+  // Employment Pass specific analysis (SIMPLIFIED - import from singaporeTax)
   const employmentPassIntel = user.taxStatus === 'Employment Pass' 
     ? analyzeEmploymentPassAdvantages(user)
     : undefined;
   
-  // Generate narrative
-  const narrative = generateActionBiasNarrative({
+  // Generate narrative (MASSIVELY SIMPLIFIED)
+  const narrative = generateSimpleNarrative({
     fiProgress,
     allocationAnalysis,
     opportunities,
@@ -141,7 +134,7 @@ export function analyzePortfolioIntelligence(
 }
 
 /**
- * Analyze portfolio allocation vs targets
+ * Analyze portfolio allocation vs targets (SIMPLIFIED - removed from aiInsights duplication)
  */
 function analyzePortfolioAllocation(
   holdings: Holding[], 
@@ -163,8 +156,8 @@ function analyzePortfolioAllocation(
     else if (gap < -2) status = 'underweight';
     else status = 'excess';
     
-    // Generate callout message
-    const callout = generateAllocationCallout(categoryName, status, gap, Math.abs(gapAmount));
+    // Generate callout message (SIMPLIFIED)
+    const callout = generateSimpleCallout(categoryName, status, gap, Math.abs(gapAmount));
     
     // Calculate priority (higher gap = higher priority)
     const priority = Math.abs(gap) > 5 ? 10 : Math.abs(gap) > 2 ? 7 : 3;
@@ -185,9 +178,9 @@ function analyzePortfolioAllocation(
 }
 
 /**
- * Generate smart callouts for allocation cards
+ * Generate simple callouts (SIMPLIFIED - removed complex logic)
  */
-function generateAllocationCallout(
+function generateSimpleCallout(
   category: string, 
   status: 'perfect' | 'underweight' | 'excess',
   gap: number,
@@ -197,13 +190,10 @@ function generateAllocationCallout(
     case 'perfect':
       return `Perfect allocation ✅`;
     case 'underweight':
-      if (category === 'Growth' && gap < -10) {
-        return `Underweight - deploy excess cash here 💡`;
-      }
       return `${Math.abs(gap).toFixed(1)}% below target 📈`;
     case 'excess':
       if (category === 'Liquidity' && gap > 10) {
-        return `Excess cash - opportunity cost ${(gapAmount * 0.07 / 1000).toFixed(0)}k annually 🚨`;
+        return `Excess cash - deploy to investments 🚨`;
       }
       return `${gap.toFixed(1)}% above target ⚖️`;
     default:
@@ -212,7 +202,7 @@ function generateAllocationCallout(
 }
 
 /**
- * Calculate FI progress metrics
+ * Calculate FI progress metrics (SIMPLIFIED)
  */
 function calculateFIProgress(currentNetWorth: number, fiGoal: number) {
   const percentToFirstMillion = Math.min((currentNetWorth / 1000000) * 100, 100);
@@ -233,7 +223,7 @@ function calculateFIProgress(currentNetWorth: number, fiGoal: number) {
 }
 
 /**
- * Detect portfolio opportunities and generate action items
+ * Detect portfolio opportunities (SIMPLIFIED - focus on high-impact items)
  */
 function detectPortfolioOpportunities(
   categories: CategoryAnalysis[],
@@ -261,15 +251,15 @@ function detectPortfolioOpportunities(
     });
   }
   
-  // 2. Allocation gap analysis
+  // 2. Major allocation gaps only (SIMPLIFIED - removed minor ones)
   categories.forEach(category => {
-    if (category.status === 'underweight' && Math.abs(category.gapAmount) > 5000) {
+    if (category.status === 'underweight' && Math.abs(category.gapAmount) > 10000) {
       opportunities.push({
         id: `${category.name.toLowerCase()}-underweight`,
         type: 'opportunity',
         title: `Increase ${category.name} Allocation`,
         description: `${category.name} underweight by ${Math.abs(category.gapAmount/1000).toFixed(0)}k`,
-        dollarImpact: Math.abs(category.gapAmount) * 0.02, // Risk reduction value
+        dollarImpact: Math.abs(category.gapAmount) * 0.02,
         timeline: 'Next month',
         actionText: `Add to ${category.name}`,
         priority: 8,
@@ -278,44 +268,32 @@ function detectPortfolioOpportunities(
     }
   });
   
-  // 3. Risk concentration analysis
-  const concentrationRisks = analyzeRiskConcentration(categories, totalValue);
-  opportunities.push(...concentrationRisks);
-  
-  return opportunities.sort((a, b) => b.priority - a.priority);
-}
-
-/**
- * Analyze risk concentration in portfolio
- */
-function analyzeRiskConcentration(categories: CategoryAnalysis[], totalValue: number): ActionItem[] {
-  const risks: ActionItem[] = [];
-  
+  // 3. Major concentration risks only (SIMPLIFIED - removed minor risks)
   categories.forEach(category => {
     category.holdings.forEach(holding => {
       const concentration = (holding.valueSGD / totalValue) * 100;
       
-      if (concentration > 15) { // Over 15% in single position
-        risks.push({
+      if (concentration > 20) { // Only major concentrations
+        opportunities.push({
           id: `concentration-${holding.symbol}`,
-          type: concentration > 25 ? 'urgent' : 'optimization',
+          type: 'urgent',
           title: `Reduce ${holding.symbol} Concentration`,
           description: `${holding.symbol} is ${concentration.toFixed(1)}% of portfolio`,
-          dollarImpact: holding.valueSGD * 0.05, // Risk reduction value
+          dollarImpact: holding.valueSGD * 0.05,
           timeline: 'Next rebalancing',
           actionText: 'Reduce Position',
-          priority: concentration > 25 ? 10 : 6,
+          priority: 10,
           category: 'risk'
         });
       }
     });
   });
   
-  return risks;
+  return opportunities.sort((a, b) => b.priority - a.priority);
 }
 
 /**
- * Generate status bar intelligence
+ * Generate status bar intelligence (SIMPLIFIED)
  */
 function generateStatusIntelligence(
   fiProgress: any,
@@ -323,11 +301,7 @@ function generateStatusIntelligence(
   employmentPassIntel?: any
 ) {
   const fiProgressText = `${fiProgress.percentToFirstMillion.toFixed(1)}% to first million`;
-  
-  // Find most urgent action
   const urgentAction = opportunities[0]?.title || 'Portfolio optimized';
-  
-  // Employment Pass deadline
   const deadline = employmentPassIntel?.srsOpportunity?.deadline || null;
   
   return {
@@ -338,9 +312,9 @@ function generateStatusIntelligence(
 }
 
 /**
- * Generate Action Bias narrative with personality
+ * Generate simple narrative (MASSIVELY SIMPLIFIED - removed complex tone logic)
  */
-function generateActionBiasNarrative(context: {
+function generateSimpleNarrative(context: {
   fiProgress: any;
   allocationAnalysis: CategoryAnalysis[];
   opportunities: ActionItem[];
@@ -350,18 +324,18 @@ function generateActionBiasNarrative(context: {
   
   const { fiProgress, allocationAnalysis, opportunities, employmentPassIntel } = context;
   
-  // Determine primary message tone
+  // Simple message priority: Urgent actions > Progress > General guidance
   let primaryMessage: string;
   let tone: 'celebration' | 'urgency' | 'guidance' | 'reassurance';
   
-  // Priority: Employment Pass urgency > Major opportunities > Celebration > Guidance
-  if (employmentPassIntel?.urgencyLevel === 'critical') {
+  if (opportunities.some(opp => opp.type === 'urgent')) {
     tone = 'urgency';
-    primaryMessage = `🚨 SRS deadline approaching! Don't miss $${employmentPassIntel.srsOpportunity.taxSavings.toLocaleString()} in tax savings.`;
+    const urgentOpp = opportunities.find(opp => opp.type === 'urgent');
+    primaryMessage = `🚨 ${urgentOpp?.title} - Take action to optimize your portfolio.`;
   } else if (opportunities.some(opp => opp.dollarImpact > 5000)) {
     tone = 'guidance';
-    const bigOpportunity = opportunities.find(opp => opp.dollarImpact > 5000);
-    primaryMessage = `💡 Major opportunity: ${bigOpportunity?.title} could add $${(bigOpportunity?.dollarImpact || 0).toLocaleString()} annually`;
+    const bigOpp = opportunities.find(opp => opp.dollarImpact > 5000);
+    primaryMessage = `💡 ${bigOpp?.title} could add $${(bigOpp?.dollarImpact || 0).toLocaleString()} annually`;
   } else if (allocationAnalysis.filter(cat => cat.status === 'perfect').length >= 3) {
     tone = 'celebration';
     primaryMessage = `🎉 Portfolio excellently balanced! You're ${fiProgress.percentToFirstMillion.toFixed(1)}% to your first million.`;
@@ -370,110 +344,52 @@ function generateActionBiasNarrative(context: {
     primaryMessage = `📊 Portfolio analysis complete. ${opportunities.length} optimization opportunities identified.`;
   }
   
-  // Supporting messages
+  // Simple supporting messages (SIMPLIFIED)
   const supportingMessages: string[] = [];
   
-  // FI progress encouragement
   if (fiProgress.percentToFirstMillion > 40) {
-    supportingMessages.push(`Strong progress: ${fiProgress.percentToFirstMillion.toFixed(1)}% to first million milestone`);
+    supportingMessages.push(`Strong FI progress: ${fiProgress.percentToFirstMillion.toFixed(1)}% to first million`);
   }
   
-  // Employment Pass advantages
   if (employmentPassIntel && employmentPassIntel.advantageValue > 1000) {
-    supportingMessages.push(`Your Employment Pass provides unique tax advantages worth $${employmentPassIntel.advantageValue.toLocaleString()}`);
+    supportingMessages.push(`Employment Pass tax advantages worth $${employmentPassIntel.advantageValue.toLocaleString()}`);
   }
   
-  // Plan adherence
   const perfectCategories = allocationAnalysis.filter(cat => cat.status === 'perfect').length;
   if (perfectCategories >= 2) {
-    supportingMessages.push(`${perfectCategories}/4 categories perfectly allocated - excellent discipline!`);
+    supportingMessages.push(`${perfectCategories}/4 categories well allocated`);
   }
   
   return {
     primaryMessage,
     tone,
-    supportingMessages,
-    confidence: opportunities.length <= 2 ? 'high' : opportunities.length <= 4 ? 'medium' : 'low'
+    supportingMessages
   };
 }
 
 /**
- * Singapore Employment Pass advantage analysis
+ * Singapore Employment Pass advantage analysis (SIMPLIFIED - use singaporeTax.ts)
  */
 function analyzeEmploymentPassAdvantages(user: UserProfile) {
-  // Calculate SRS optimization
-  const srsOpportunity = calculateSRSOptimization(
+  // Use consolidated tax intelligence from singaporeTax.ts
+  const taxIntelligence = generateTaxIntelligence(
     user.estimatedIncome,
-    user.currentSRSContributions
+    user.currentSRSContributions,
+    'Employment Pass'
   );
   
-  // Basic ETF tax efficiency (simplified for now)
-  const etfTaxEfficiency = {
-    hasUSETFs: false, // TODO: Implement US ETF detection
-    recommendation: 'Use Irish-domiciled ETFs to avoid US estate tax'
-  };
-  
-  // Total advantage value
-  const advantageValue = srsOpportunity.taxSavings;
-  
   return {
-    srsOpportunity,
-    etfTaxEfficiency,
-    advantageValue,
-    urgencyLevel: srsOpportunity.urgencyLevel
+    srsOpportunity: taxIntelligence.srsOptimization,
+    etfTaxEfficiency: {
+      recommendation: 'Use Irish-domiciled ETFs to avoid US estate tax'
+    },
+    advantageValue: taxIntelligence.employmentPassAdvantage.additionalTaxSavings,
+    urgencyLevel: taxIntelligence.srsOptimization.urgencyLevel
   };
 }
 
 /**
- * Calculate SRS tax optimization for Employment Pass holders
- */
-function calculateSRSOptimization(annualIncome: number, currentContributions: number) {
-  const maxContribution = 35700; // Employment Pass limit
-  const remainingRoom = Math.max(0, maxContribution - currentContributions);
-  const taxBracket = calculateTaxBracket(annualIncome);
-  const taxSavings = remainingRoom * (taxBracket.rate / 100);
-  
-  // Calculate urgency based on days to deadline
-  const deadline = new Date('2025-12-31');
-  const today = new Date();
-  const daysToDeadline = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  
-  let urgencyLevel: 'low' | 'medium' | 'high' | 'critical';
-  if (daysToDeadline < 30) urgencyLevel = 'critical';
-  else if (daysToDeadline < 90) urgencyLevel = 'high';
-  else if (daysToDeadline < 180) urgencyLevel = 'medium';
-  else urgencyLevel = 'low';
-  
-  return {
-    recommendedContribution: remainingRoom,
-    taxSavings,
-    netCost: remainingRoom - taxSavings,
-    urgencyLevel,
-    daysToDeadline,
-    deadline: '2025-12-31',
-    employmentPassAdvantage: taxSavings - (15000 * (taxBracket.rate / 100)) // vs citizen
-  };
-}
-
-/**
- * Calculate Singapore tax bracket
- */
-function calculateTaxBracket(annualIncome: number): { rate: number; bracket: string } {
-  if (annualIncome <= 20000) return { rate: 0, bracket: "0%" };
-  if (annualIncome <= 30000) return { rate: 2, bracket: "2%" };
-  if (annualIncome <= 40000) return { rate: 3.5, bracket: "3.5%" };
-  if (annualIncome <= 80000) return { rate: 7, bracket: "7%" };
-  if (annualIncome <= 120000) return { rate: 11.5, bracket: "11.5%" };
-  if (annualIncome <= 160000) return { rate: 15, bracket: "15%" };
-  if (annualIncome <= 200000) return { rate: 18, bracket: "18%" };
-  if (annualIncome <= 240000) return { rate: 19, bracket: "19%" };
-  if (annualIncome <= 280000) return { rate: 19.5, bracket: "19.5%" };
-  if (annualIncome <= 320000) return { rate: 20, bracket: "20%" };
-  return { rate: 22, bracket: "22%" };
-}
-
-/**
- * Fallback intelligence for when analysis fails
+ * Simple fallback intelligence (SIMPLIFIED)
  */
 export function getFallbackIntelligence(holdings: Holding[]): PortfolioIntelligenceReport {
   const totalValue = holdings.reduce((sum, h) => sum + h.valueSGD, 0);
@@ -500,8 +416,7 @@ export function getFallbackIntelligence(holdings: Holding[]): PortfolioIntellige
     narrativeIntelligence: {
       primaryMessage: "Portfolio intelligence is loading. Your plan remains solid.",
       tone: 'guidance',
-      supportingMessages: ["Stick to your long-term allocation strategy"],
-      confidence: 'medium'
+      supportingMessages: ["Stick to your long-term allocation strategy"]
     },
     generated: new Date().toISOString(),
     nextRefresh: new Date(Date.now() + 300000).toISOString() // 5 minutes

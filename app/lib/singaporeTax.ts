@@ -1,4 +1,5 @@
-// app/lib/singaporeTax.ts - Singapore Employment Pass Tax Optimization
+// app/lib/singaporeTax.ts - Complete Singapore Tax Engine (MVP Consolidated)
+// Single source of truth for ALL Singapore tax logic
 
 interface SRSAnalysis {
   recommendedContribution: number;
@@ -36,6 +37,30 @@ interface TaxInsight {
   priority: number;
   isClickable: boolean;
   metadata?: any;
+}
+
+// CONSOLIDATED: Tax Intelligence interface (from taxIntelligence.ts)
+interface TaxIntelligence {
+  srsOptimization: {
+    remainingRoom: number;
+    taxSavings: number;
+    daysToDeadline: number;
+    monthlyTarget: number;
+    urgencyLevel: 'low' | 'medium' | 'high' | 'critical';
+    maxContribution: number;
+    currentContributions: number;
+    taxBracket: number;
+  };
+  opportunityCost: {
+    monthlyPotentialSavings: number;
+    actionMessage: string;
+    urgencyMessage: string;
+  };
+  employmentPassAdvantage: {
+    srsLimitAdvantage: number;
+    additionalTaxSavings: number;
+    vsComparison: string;
+  };
 }
 
 // Singapore tax brackets for 2025
@@ -83,16 +108,18 @@ export function calculateTaxBracket(annualIncome: number): TaxBracketInfo {
   };
 }
 
+// CONSOLIDATED: Estimate income from portfolio (from taxIntelligence.ts)
 export function estimateIncomeFromPortfolio(portfolioValue: number): number {
-  // Conservative estimate: assume 20-30% savings rate
-  // Higher portfolio suggests higher income
-  if (portfolioValue < 50000) return 80000;
-  if (portfolioValue < 100000) return 100000;
-  if (portfolioValue < 200000) return 120000;
-  if (portfolioValue < 400000) return 150000;
-  if (portfolioValue < 600000) return 180000;
-  if (portfolioValue < 1000000) return 220000;
-  return 250000;
+  if (portfolioValue < 50000) return 100000; // Conservative default
+  
+  // Assume 40% savings rate for Employment Pass holders over 3 years
+  const assumedSavingsRate = 0.4;
+  const assumedYearsInvesting = 3;
+  
+  const estimatedIncome = portfolioValue / (assumedSavingsRate * assumedYearsInvesting);
+  
+  // Bound to reasonable Singapore Employment Pass ranges
+  return Math.max(80000, Math.min(estimatedIncome, 300000));
 }
 
 export function calculateSRSOptimization(
@@ -139,6 +166,92 @@ export function calculateSRSOptimization(
     progressPercent,
     employmentPassAdvantage
   };
+}
+
+// CONSOLIDATED: Generate tax intelligence (from taxIntelligence.ts)
+export function generateTaxIntelligence(
+  income: number = 120000,
+  currentSRSContributions: number = 0,
+  taxStatus: string = 'Employment Pass'
+): TaxIntelligence {
+  
+  // Core SRS optimization
+  const srsOptimization = calculateSRSOptimization(income, currentSRSContributions, taxStatus as any);
+  
+  // Opportunity cost calculations
+  const monthsRemaining = Math.max(Math.ceil(srsOptimization.urgencyDays / 30), 1);
+  const monthlyPotentialSavings = srsOptimization.taxSavings / monthsRemaining;
+  
+  const opportunityCost = {
+    monthlyPotentialSavings,
+    actionMessage: `Start $${srsOptimization.monthlyTarget.toFixed(0)}/month SRS to capture $${srsOptimization.taxSavings.toLocaleString()} total benefit`,
+    urgencyMessage: `Missing $${monthlyPotentialSavings.toFixed(0)} potential tax savings each month waiting`
+  };
+  
+  // Employment Pass advantage calculation
+  const citizenLimit = 15000;
+  const epLimit = 35700;
+  const advantageAmount = epLimit - citizenLimit;
+  const taxBracket = calculateTaxBracket(income);
+  const advantageTaxSavings = advantageAmount * (taxBracket.rate / 100);
+  
+  const employmentPassAdvantage = {
+    srsLimitAdvantage: advantageAmount,
+    additionalTaxSavings: advantageTaxSavings,
+    vsComparison: `$${advantageTaxSavings.toFixed(0)} more tax savings vs Citizens/PRs`
+  };
+  
+  return {
+    srsOptimization: {
+      remainingRoom: srsOptimization.recommendedContribution,
+      taxSavings: srsOptimization.taxSavings,
+      daysToDeadline: srsOptimization.urgencyDays,
+      monthlyTarget: srsOptimization.monthlyTarget,
+      urgencyLevel: srsOptimization.urgencyLevel,
+      maxContribution: taxStatus === 'Employment Pass' ? 35700 : 15000,
+      currentContributions: currentSRSContributions,
+      taxBracket: taxBracket.rate
+    },
+    opportunityCost,
+    employmentPassAdvantage
+  };
+}
+
+// CONSOLIDATED: Convert tax intelligence to actions (from taxIntelligence.ts)
+export function convertTaxIntelligenceToActions(taxIntel: TaxIntelligence): Array<any> {
+  const actions = [];
+  
+  // SRS optimization action
+  if (taxIntel.srsOptimization.remainingRoom > 0) {
+    actions.push({
+      id: 'srs-optimization',
+      type: taxIntel.srsOptimization.urgencyLevel === 'critical' ? 'urgent' : 'opportunity',
+      title: `SRS Tax Optimization - $${taxIntel.srsOptimization.taxSavings.toLocaleString()} Savings`,
+      description: taxIntel.opportunityCost.actionMessage,
+      dollarImpact: taxIntel.srsOptimization.taxSavings,
+      timeline: `${taxIntel.srsOptimization.daysToDeadline} days remaining`,
+      actionText: 'Setup SRS Contributions',
+      isClickable: true,
+      priority: taxIntel.srsOptimization.urgencyLevel === 'critical' ? 10 : 8
+    });
+  }
+  
+  // Employment Pass advantage awareness
+  if (taxIntel.employmentPassAdvantage.additionalTaxSavings > 1000) {
+    actions.push({
+      id: 'employment-pass-advantage',
+      type: 'optimization',
+      title: 'Employment Pass Tax Advantage',
+      description: taxIntel.employmentPassAdvantage.vsComparison,
+      dollarImpact: taxIntel.employmentPassAdvantage.additionalTaxSavings,
+      timeline: 'Maximize before visa change',
+      actionText: 'Learn More',
+      isClickable: true,
+      priority: 6
+    });
+  }
+  
+  return actions;
 }
 
 export function generateSRSInsights(
@@ -311,54 +424,6 @@ export function calculateEmploymentPassAdvantage(): {
       recommendation: "Use Irish-domiciled ETFs to avoid US estate tax",
       riskForUS: "40% estate tax on US assets for non-residents"
     }
-  };
-}
-
-export function calculateTaxEfficiency(
-  holdings: any[],
-  portfolioValue: number
-): {
-  currentEfficiency: number;
-  optimizedEfficiency: number;
-  improvementPotential: number;
-  recommendations: string[];
-} {
-  const srsAnalysis = calculateSRSOptimization(
-    estimateIncomeFromPortfolio(portfolioValue),
-    0,
-    'Employment Pass'
-  );
-  
-  const usExposures = detectUSTaxExposure(holdings);
-  const usEstateTaxRisk = usExposures.reduce((sum, insight) => 
-    sum + (insight.metadata?.potentialEstateTax || 0), 0
-  );
-  
-  // Simple tax efficiency score (0-100)
-  const currentEfficiency = Math.max(0, 100 - 
-    (srsAnalysis.taxSavings / portfolioValue * 100) - 
-    (usEstateTaxRisk / portfolioValue * 100)
-  );
-  
-  const optimizedEfficiency = Math.min(100, currentEfficiency + 
-    (srsAnalysis.taxSavings / portfolioValue * 100) + 
-    (usEstateTaxRisk / portfolioValue * 100)
-  );
-  
-  const improvementPotential = optimizedEfficiency - currentEfficiency;
-  
-  const recommendations = [
-    ...(srsAnalysis.taxSavings > 1000 ? ['Maximize SRS contributions'] : []),
-    ...(usEstateTaxRisk > 10000 ? ['Switch to Irish-domiciled ETFs'] : []),
-    'Consider tax-loss harvesting opportunities',
-    'Review holding periods for capital gains optimization'
-  ];
-  
-  return {
-    currentEfficiency,
-    optimizedEfficiency,
-    improvementPotential,
-    recommendations
   };
 }
 
