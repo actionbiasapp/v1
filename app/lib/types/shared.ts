@@ -54,7 +54,7 @@ export interface Intelligence {
   statusIntelligence?: {
     fiProgress?: string;
     urgentAction?: string;
-    deadline?: string;
+    deadline?: string | null;
   };
   actionIntelligence?: Array<{
     id: string;

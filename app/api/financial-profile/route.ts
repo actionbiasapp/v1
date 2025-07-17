@@ -1,5 +1,4 @@
-// app/api/financial-profile/route.ts - BUILD ERROR FIXED
-// Phase 1+2: Unified processing + deletion logic + build fixes
+// app/api/financial-profile/route.ts - Extended with allocation management
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 
@@ -9,8 +8,8 @@ export async function GET() {
   try {
     const userId = 'default-user';
     
-    // Fetch all financial records efficiently
-    const [user, incomeRecords, expenseRecords, savingsRecords, netWorthRecords] = await Promise.all([
+    // Fetch all financial records efficiently + portfolio strategy
+    const [user, incomeRecords, expenseRecords, savingsRecords, netWorthRecords, portfolioStrategy] = await Promise.all([
       prisma.user.findFirst({ where: { id: userId } }),
       prisma.incomeRecord.findMany({ 
         where: { userId }, 
@@ -27,6 +26,9 @@ export async function GET() {
       prisma.netWorthRecord.findMany({ 
         where: { userId }, 
         orderBy: { year: 'desc' }
+      }),
+      prisma.portfolioStrategy.findFirst({ 
+        where: { userId, isActive: true }
       })
     ]);
 
@@ -65,10 +67,10 @@ export async function GET() {
       };
     }).sort((a, b) => b.year - a.year);
 
-    // Return unified structure - no separate current year data
+    // Return unified structure with allocation targets
     return NextResponse.json({ 
       success: true, 
-      yearlyData, // ALL years including current
+      yearlyData,
       fiData: {
         goal: Number(user.fiGoal),
         targetYear: user.fiTargetYear
@@ -77,6 +79,19 @@ export async function GET() {
         taxStatus: user.taxStatus,
         country: user.country,
         srsLimit: Number(user.srsLimit)
+      },
+      allocationTargets: portfolioStrategy ? {
+        core: Number(portfolioStrategy.coreTarget),
+        growth: Number(portfolioStrategy.growthTarget),
+        hedge: Number(portfolioStrategy.hedgeTarget),
+        liquidity: Number(portfolioStrategy.liquidityTarget),
+        rebalanceThreshold: Number(portfolioStrategy.rebalanceThreshold)
+      } : {
+        core: 25,
+        growth: 55,
+        hedge: 10,
+        liquidity: 10,
+        rebalanceThreshold: 5
       }
     });
     
@@ -102,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     // STEP 1: Update user profile first
     if (fiData || userProfile) {
-      const updateData: Record<string, unknown> = {}; // Fixed: no more 'any' type
+      const updateData: Record<string, unknown> = {};
       
       if (fiData?.goal) updateData.fiGoal = Number(fiData.goal);
       if (fiData?.targetYear) updateData.fiTargetYear = Number(fiData.targetYear);
@@ -233,15 +248,13 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          // Net worth record - FIXED: Use individual where clause
+          // Net worth record
           if (netWorth !== undefined && netWorth >= 0) {
-            // Check if record exists first
             const existingNetWorth = await prisma.netWorthRecord.findFirst({
               where: { userId, year }
             });
 
             if (existingNetWorth) {
-              // Update existing record
               await prisma.netWorthRecord.update({
                 where: { id: existingNetWorth.id },
                 data: { 
@@ -251,7 +264,6 @@ export async function POST(request: NextRequest) {
                 }
               });
             } else {
-              // Create new record
               await prisma.netWorthRecord.create({
                 data: { 
                   userId, 
@@ -286,6 +298,76 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ 
       success: false, 
       error: 'Failed to save financial profile' 
+    }, { status: 500 });
+  }
+}
+
+// NEW: PATCH handler for allocation updates
+export async function PATCH(request: NextRequest) {
+  try {
+    const { allocationTargets } = await request.json();
+    const userId = 'default-user';
+    
+    console.log('📊 Updating allocation targets:', allocationTargets);
+    
+    // Validate allocation targets
+    const { core, growth, hedge, liquidity, rebalanceThreshold } = allocationTargets;
+    const total = core + growth + hedge + liquidity;
+    
+    if (Math.abs(total - 100) > 0.01) {
+      return NextResponse.json({ 
+        success: false, 
+        error: `Allocation must total 100%, got ${total}%` 
+      }, { status: 400 });
+    }
+    
+    // Validate individual values
+    if (core < 0 || growth < 0 || hedge < 0 || liquidity < 0 || rebalanceThreshold < 0) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Allocation percentages must be positive' 
+      }, { status: 400 });
+    }
+    
+    // Deactivate existing strategy
+    await prisma.portfolioStrategy.updateMany({
+      where: { userId, isActive: true },
+      data: { isActive: false }
+    });
+    
+    // Create new active strategy
+    const newStrategy = await prisma.portfolioStrategy.create({
+      data: {
+        userId,
+        strategyName: `Custom Strategy ${new Date().toISOString().split('T')[0]}`,
+        coreTarget: core,
+        growthTarget: growth,
+        hedgeTarget: hedge,
+        liquidityTarget: liquidity,
+        rebalanceThreshold: rebalanceThreshold || 5,
+        isActive: true
+      }
+    });
+    
+    console.log('✅ Allocation targets updated successfully');
+    
+    return NextResponse.json({ 
+      success: true,
+      message: 'Allocation targets updated successfully',
+      allocationTargets: {
+        core: Number(newStrategy.coreTarget),
+        growth: Number(newStrategy.growthTarget),
+        hedge: Number(newStrategy.hedgeTarget),
+        liquidity: Number(newStrategy.liquidityTarget),
+        rebalanceThreshold: Number(newStrategy.rebalanceThreshold)
+      }
+    });
+    
+  } catch (error) {
+    console.error('PATCH API Error:', error);
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Failed to update allocation targets' 
     }, { status: 500 });
   }
 }
