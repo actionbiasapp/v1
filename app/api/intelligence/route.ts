@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { 
-  analyzePortfolioIntelligence, 
-  getFallbackIntelligence,
-  type UserProfile 
-} from '@/app/lib/portfolioIntelligence';
-import { type Holding } from '@/app/lib/types/shared';
+import { type Holding, type CategoryData } from '@/app/lib/types/shared';
 import { 
   generateTaxIntelligence, 
   convertTaxIntelligenceToActions, 
@@ -14,6 +9,160 @@ import {
 
 const prisma = new PrismaClient();
 const rateLimits = new Map<string, { count: number; resetTime: number }>();
+
+// NEW: Extracted category processing logic from hook for use in API
+function processCategoriesForIntelligence(
+  holdings: Holding[],
+  totalValue: number,
+  displayCurrency: 'SGD' | 'USD' | 'INR' = 'SGD',
+  customTargets?: {
+    core: number;
+    growth: number;
+    hedge: number;
+    liquidity: number;
+    rebalanceThreshold: number;
+  }
+): CategoryData[] {
+  // Use custom targets if provided, otherwise use defaults
+  const targets = customTargets || {
+    core: 25,
+    growth: 55,
+    hedge: 10,
+    liquidity: 10,
+    rebalanceThreshold: 5
+  };
+
+  // Category definitions with custom targets
+  const categories = [
+    {
+      name: 'Core',
+      target: targets.core,
+      color: 'bg-blue-500',
+      icon: '🛡️',
+      description: 'Stable dividend stocks, bonds, REITs'
+    },
+    {
+      name: 'Growth',
+      target: targets.growth,
+      color: 'bg-green-500',
+      icon: '📈',
+      description: 'Growth stocks, tech, emerging markets'
+    },
+    {
+      name: 'Hedge',
+      target: targets.hedge,
+      color: 'bg-yellow-500',
+      icon: '⚖️',
+      description: 'Gold, commodities, hedge funds'
+    },
+    {
+      name: 'Liquidity',
+      target: targets.liquidity,
+      color: 'bg-purple-500',
+      icon: '💰',
+      description: 'Cash, money market, short-term bonds'
+    }
+  ];
+
+  // Process each category
+  return categories.map(category => {
+    const categoryHoldings = holdings.filter(h => h.category === category.name);
+    
+    // Calculate current value in display currency
+    const currentValue = categoryHoldings.reduce((sum, holding) => {
+      const currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
+                           displayCurrency === 'USD' ? holding.valueUSD :
+                           holding.valueINR;
+      return sum + currencyValue;
+    }, 0);
+
+    const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
+    
+    // Gap-based calculations (keep for compatibility)
+    const gap = currentPercent - category.target;
+    const gapAmount = (gap / 100) * totalValue;
+
+    // NEW: Completion-based calculations
+    const completionPercent = category.target > 0 ? (currentPercent / category.target) * 100 : 0;
+
+    // Determine status using custom rebalance threshold
+    const threshold = targets.rebalanceThreshold;
+    let status: 'perfect' | 'underweight' | 'excess';
+    let statusText: string;
+    let callout: string;
+
+    // FIXED - Use completion percentage for both status AND callouts
+    if (completionPercent >= 95 && completionPercent <= 105) {
+        status = 'perfect';
+        statusText = 'Perfect';
+        callout = '✅ Perfect allocation - target achieved';
+      } else if (completionPercent < 95) {
+        status = 'underweight';
+        const shortfall = 100 - completionPercent;
+        statusText = shortfall > 0 ? `${Math.round(shortfall)}% to go` : 'Perfect';
+        
+        if (shortfall > 20) {
+          callout = `⚠️ ${Math.round(shortfall)}% short of target. Consider adding ${(Math.abs(gapAmount)/1000).toFixed(0)}k to reach your ${category.target}% allocation goal.`;
+        } else if (shortfall > 5) {
+          callout = `🎯 ${Math.round(shortfall)}% to go. Consider small additions to reach target.`;
+        } else {
+          callout = `🎯 Almost there! Just ${Math.round(shortfall)}% to go.`;
+        }
+      } else {
+        status = 'excess';
+        const overAmount = completionPercent - 100;
+        statusText = `${Math.round(overAmount)}% over`;
+        
+        if (category.name === 'Liquidity' && completionPercent > 200) {
+          callout = `🚨 Significantly over-allocated. Consider deploying ${(Math.abs(gapAmount)/1000).toFixed(0)}k excess to other categories.`;
+        } else {
+          callout = `⚖️ ${Math.round(overAmount)}% over target. Consider rebalancing.`;
+        }
+    }
+    
+    return {
+      ...category,
+      holdings: categoryHoldings,
+      currentValue,
+      currentPercent,
+      completionPercent,
+      gap,
+      gapAmount,
+      status,
+      statusText,
+      callout
+    };
+  });
+}
+
+// NEW: Simple fallback function
+function getFallbackIntelligence(holdings: Holding[]) {
+  const totalValue = holdings.reduce((sum, h) => sum + h.valueSGD, 0);
+  
+  return {
+    statusIntelligence: {
+      fiProgress: `${((totalValue / 1000000) * 100).toFixed(1)}% to first million`,
+      urgentAction: "Portfolio analysis in progress",
+      deadline: null,
+      netWorth: totalValue
+    },
+    allocationIntelligence: [],
+    actionIntelligence: [{
+      id: 'fallback',
+      type: 'opportunity',
+      title: 'Review Portfolio Allocation',
+      problem: 'Ensure your portfolio matches your target allocation',
+      solution: 'Review and adjust allocations',
+      benefit: 'Optimize portfolio performance',
+      timeline: 'This week',
+      actionText: 'Review Allocation',
+      priority: 5,
+      isClickable: true
+    }],
+    generated: new Date().toISOString(),
+    nextRefresh: new Date(Date.now() + 300000).toISOString() // 5 minutes
+  };
+}
 
 export async function GET() {
   try {
@@ -76,29 +225,41 @@ export async function GET() {
       costBasis: holding.costBasis ? Number(holding.costBasis) : undefined
     }));
 
-    // Calculate total portfolio value for income estimation
-    const totalPortfolioValue = formattedHoldings.reduce((sum, holding) => {
-      return sum + holding.valueSGD;
-    }, 0);
+    // Calculate total portfolio value
+    const totalValue = formattedHoldings.reduce((sum, holding) => sum + holding.valueSGD, 0);
     
     // Smart income estimation with conservative default
     const estimatedIncome = 120000; // Conservative default until user inputs real income
     
-    const userProfile: UserProfile = {
-      id: user?.id || userId,
-      taxStatus: 'Employment Pass',
-      estimatedIncome,
-      currentSRSContributions: 0,
-      fiGoal: Number(user?.fiGoal || 2500000),
-      fiTargetYear: user?.fiTargetYear || 2032,
-      riskTolerance: 'moderate'
+    // NEW (FIXED) - Load user's actual allocation targets
+    // Try to get user's custom targets from financial profile API
+    let userTargets;
+    try {
+      const profileResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/financial-profile`);
+      if (profileResponse.ok) {
+        const profileData = await profileResponse.json();
+        if (profileData.success && profileData.allocationTargets) {
+          userTargets = profileData.allocationTargets;
+        }
+      }
+    } catch (error) {
+      console.log('Could not load user allocation targets, using defaults');
+    }
+
+    // Fallback to defaults if no custom targets found
+    const finalTargets = userTargets || {
+      core: 25,
+      growth: 55,
+      hedge: 10,
+      liquidity: 10,
+      rebalanceThreshold: 5
     };
-    
-    // EXISTING: Portfolio intelligence analysis
-    const intelligenceReport = analyzePortfolioIntelligence(
+
+    const categoryData = processCategoriesForIntelligence(
       formattedHoldings,
-      userProfile,
-      'SGD'
+      totalValue,
+      'SGD',
+      finalTargets // Use actual user targets
     );
     
     // CONSOLIDATED: Tax intelligence generation (now from singaporeTax.ts)
@@ -111,17 +272,41 @@ export async function GET() {
     // CONSOLIDATED: Convert tax intelligence to action items (now from singaporeTax.ts)
     const taxActions = convertTaxIntelligenceToActions(taxIntelligence);
     
-    // ENHANCED: Merge tax actions with existing portfolio actions
+    // Generate portfolio-based action items
+    const portfolioActions = categoryData
+      .filter(cat => cat.status !== 'perfect' && Math.abs(cat.gapAmount) > 5000)
+      .map((cat, index) => ({
+        id: `${cat.name.toLowerCase()}-${cat.status}`,
+        type: cat.status === 'excess' ? 'urgent' as const : 'opportunity' as const,
+        title: cat.status === 'excess' ? `Reduce ${cat.name} Allocation` : `Increase ${cat.name} Allocation`,
+        problem: cat.callout,
+        solution: cat.status === 'excess' ? 
+          `Consider moving ${(Math.abs(cat.gapAmount)/1000).toFixed(0)}k to underweight categories` :
+          `Add ${(Math.abs(cat.gapAmount)/1000).toFixed(0)}k to ${cat.name} allocation`,
+        benefit: 'Optimize portfolio balance and risk profile',
+        timeline: 'Next rebalancing',
+        actionText: cat.status === 'excess' ? 'Rebalance' : `Add to ${cat.name}`,
+        priority: Math.abs(cat.gap) > 10 ? 9 : 7,
+        isClickable: true
+      }));
+    
+    // ENHANCED: Merge tax actions with portfolio actions
     const enhancedActions = [
       ...taxActions,
-      ...intelligenceReport.actionIntelligence
+      ...portfolioActions
     ]
     .sort((a, b) => (b.priority || 0) - (a.priority || 0))
     .slice(0, 10); // Keep top 10 actions
     
+    // Calculate FI progress
+    const fiProgress = ((totalValue / 1000000) * 100).toFixed(1);
+    
     // ENHANCED: Status intelligence with tax insights
     const enhancedStatusIntelligence = {
-      ...intelligenceReport.statusIntelligence,
+      fiProgress: `${fiProgress}% to first million`,
+      urgentAction: enhancedActions[0]?.title || 'Portfolio optimized',
+      deadline: `${taxIntelligence.srsOptimization.daysToDeadline} days to SRS deadline`,
+      netWorth: totalValue,
       // Tax-specific status indicators
       srsDeadline: `${taxIntelligence.srsOptimization.daysToDeadline} days`,
       taxSavingsAvailable: taxIntelligence.srsOptimization.taxSavings,
@@ -133,7 +318,7 @@ export async function GET() {
     
     console.log(`Enhanced intelligence generated for user ${userId}:`, {
       holdingsCount: formattedHoldings.length,
-      totalValue: intelligenceReport.statusIntelligence.netWorth,
+      totalValue: totalValue,
       actionsGenerated: enhancedActions.length,
       taxActionsAdded: taxActions.length,
       estimatedIncome,
@@ -146,9 +331,9 @@ export async function GET() {
       intelligence: {
         statusIntelligence: enhancedStatusIntelligence,
         actionIntelligence: enhancedActions,
-        allocationIntelligence: intelligenceReport.allocationIntelligence,
-        generated: intelligenceReport.generated,
-        nextRefresh: intelligenceReport.nextRefresh
+        allocationIntelligence: categoryData, // Use processed category data
+        generated: new Date().toISOString(),
+        nextRefresh: new Date(Date.now() + 3600000).toISOString() // 1 hour cache
       },
       // Additional data for future use
       taxIntelligence,
@@ -163,9 +348,9 @@ export async function GET() {
         estimatedIncome
       },
       metadata: {
-        generated: intelligenceReport.generated,
-        nextRefresh: intelligenceReport.nextRefresh,
-        version: '1.3.0', // Version bump for Phase 1 completion
+        generated: new Date().toISOString(),
+        nextRefresh: new Date(Date.now() + 3600000).toISOString(),
+        version: '1.4.0', // Version bump for architectural fix
         costProfile: 'zero-ai-costs',
         userId: userId,
         holdingsCount: formattedHoldings.length,

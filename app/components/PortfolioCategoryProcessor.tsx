@@ -1,4 +1,4 @@
-// app/components/PortfolioCategoryProcessor.tsx - Add custom targets support
+// app/components/PortfolioCategoryProcessor.tsx - Add completion-based logic
 import { useMemo } from 'react';
 import { type CurrencyCode } from '@/app/lib/currency';
 import { type Intelligence, type CategoryData } from '@/app/lib/types/shared';
@@ -79,8 +79,13 @@ export function usePortfolioCategoryProcessor({
       }, 0);
 
       const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
+      
+      // EXISTING: Gap-based calculations (keep for compatibility)
       const gap = currentPercent - category.target;
       const gapAmount = (gap / 100) * totalValue;
+
+      // NEW: Completion-based calculations
+      const completionPercent = category.target > 0 ? (currentPercent / category.target) * 100 : 0;
 
       // Determine status using custom rebalance threshold
       const threshold = targets.rebalanceThreshold;
@@ -89,13 +94,17 @@ export function usePortfolioCategoryProcessor({
 
       if (Math.abs(gap) <= threshold) {
         status = 'perfect';
-        statusText = 'On Target';
+        statusText = 'Perfect';
       } else if (gap < 0) {
         status = 'underweight';
-        statusText = `${Math.abs(gap).toFixed(1)}% Under`;
+        // NEW: Completion-based status text
+        const shortfall = 100 - completionPercent;
+        statusText = shortfall > 0 ? `${Math.round(shortfall)}% to go` : 'Perfect';
       } else {
         status = 'excess';
-        statusText = `${gap.toFixed(1)}% Over`;
+        // NEW: Over-allocation status text
+        const overAmount = completionPercent - 100;
+        statusText = `${Math.round(overAmount)}% over`;
       }
 
       // Get intelligence callout if available
@@ -108,6 +117,7 @@ export function usePortfolioCategoryProcessor({
         holdings: categoryHoldings,
         currentValue,
         currentPercent,
+        completionPercent, // NEW: Add completion percentage
         gap,
         gapAmount,
         status,

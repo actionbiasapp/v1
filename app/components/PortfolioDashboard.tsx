@@ -15,7 +15,7 @@ import { type Intelligence } from '@/app/lib/types/shared';
 import { usePortfolioData } from '@/app/hooks/usePortfolioData';
 import { usePortfolioCategoryProcessor } from './PortfolioCategoryProcessor';
 import { useActionItemsProcessor } from './ActionItemsProcessor';
-import AllocationGapChart from './AllocationGapChart';
+import AppleRadialAllocation from './AppleRadialAllocation';
 import AllocationChartCard from './AllocationChartCard';
 
 // Live indicator component
@@ -214,8 +214,8 @@ export default function PortfolioDashboard() {
             </div>
           </div>
           
-          {/* ADD ALLOCATION GAP CHART HERE */}
-          <AllocationGapChart 
+          {/* ADD APPLE RADIAL ALLOCATION CHART HERE */}
+          <AppleRadialAllocation 
             categories={enhancedCategoryData}
             className="mb-6"
           />

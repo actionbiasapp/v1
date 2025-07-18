@@ -186,6 +186,7 @@ export interface CategoryData {
   target: number;                  // Target allocation %
   gap: number;                     // Percentage gap (+ excess, - underweight)
   gapAmount: number;              // Dollar amount gap
+  completionPercent: number;     // NEW: (currentPercent / target) * 100
   status: 'perfect' | 'underweight' | 'excess';
   statusText: string;             // Human readable status
   callout?: string;               // Intelligence callout message
