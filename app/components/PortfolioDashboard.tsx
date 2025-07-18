@@ -108,10 +108,22 @@ export default function PortfolioDashboard() {
     });
   }, []);
 
-  const handleAllocationTargetsUpdate = (newTargets: typeof allocationTargets) => {
+  const handleAllocationTargetsUpdate = async (newTargets: typeof allocationTargets) => {
     setAllocationTargets(newTargets);
-    // Refresh holdings to update allocation status
-    fetchHoldings();
+    
+    // NEW: Save to database via financial-profile API
+    try {
+      await fetch('/api/financial-profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allocationTargets: newTargets })
+      });
+      console.log('✅ Allocation targets saved to database');
+    } catch (error) {
+      console.error('❌ Failed to save allocation targets:', error);
+    }
+    
+    fetchHoldings(); // Refresh to use new targets
   };
 
   // Calculate total value in selected display currency
