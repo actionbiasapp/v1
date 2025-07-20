@@ -1,0 +1,80 @@
+export interface WeightedAverageResult {
+  newQuantity: number;
+  newAvgCostBasis: number;
+  newTotalInvested: number;
+  isNewHolding: boolean;
+  existingData?: {
+    currentQuantity: number;
+    currentAvgPrice: number;
+    currentTotalInvested: number;
+  };
+}
+
+export async function calculateWeightedAverage(
+  symbol: string,
+  addedQuantity: number,
+  addedUnitPrice: number,
+  addedTotalCost: number
+): Promise<WeightedAverageResult> {
+  
+  try {
+    // Check for existing holding
+    const response = await fetch('/api/holdings');
+    if (!response.ok) throw new Error('Failed to fetch holdings');
+    
+    const holdings = await response.json();
+    const existingHolding = holdings.find(h => h.symbol.toUpperCase() === symbol.toUpperCase());
+    
+    if (!existingHolding || !existingHolding.quantity || Number(existingHolding.quantity) === 0) {
+      // New holding
+      return {
+        newQuantity: addedQuantity,
+        newAvgCostBasis: addedUnitPrice,
+        newTotalInvested: addedTotalCost,
+        isNewHolding: true
+      };
+    }
+    
+    // Existing holding - calculate weighted average
+    const currentQuantity = Number(existingHolding.quantity);
+    const currentAvgPrice = Number(existingHolding.unitPrice || existingHolding.currentUnitPrice || 0);
+    const currentTotalInvested = currentQuantity * currentAvgPrice;
+    
+    const newQuantity = currentQuantity + addedQuantity;
+    const newTotalInvested = currentTotalInvested + addedTotalCost;
+    const newAvgCostBasis = newTotalInvested / newQuantity;
+    
+    return {
+      newQuantity,
+      newAvgCostBasis,
+      newTotalInvested,
+      isNewHolding: false,
+      existingData: {
+        currentQuantity,
+        currentAvgPrice,
+        currentTotalInvested
+      }
+    };
+  } catch (error) {
+    console.error('Weighted average calculation error:', error);
+    
+    // Fallback to new holding
+    return {
+      newQuantity: addedQuantity,
+      newAvgCostBasis: addedUnitPrice,
+      newTotalInvested: addedTotalCost,
+      isNewHolding: true
+    };
+  }
+}
+
+// Helper function to calculate units from total amount and price
+export function calculateUnitsFromTotal(totalAmount: number, unitPrice: number): number {
+  if (unitPrice <= 0) return 0;
+  return Math.round(totalAmount / unitPrice); // Round to whole shares
+}
+
+// Helper function to recalculate total from units and price
+export function calculateTotalFromUnits(quantity: number, unitPrice: number): number {
+  return quantity * unitPrice;
+}

@@ -23,11 +23,17 @@ export async function GET() {
       entryCurrency: holding.entryCurrency,
       // Keep backward compatibility with old 'value' field
       value: Number(holding.valueSGD),
-      currentValue: Number(holding.valueSGD), // Add currentValue for compatibility
+      currentValue: Number(holding.valueSGD),
       category: holding.category.name,
       location: holding.location,
       quantity: holding.quantity ? Number(holding.quantity) : null,
       costBasis: holding.costBasis ? Number(holding.costBasis) : null,
+      
+      // NEW: Daily price fields
+      currentUnitPrice: holding.currentUnitPrice ? Number(holding.currentUnitPrice) : null,
+      unitPrice: holding.unitPrice ? Number(holding.unitPrice) : null,
+      priceUpdated: holding.priceUpdated,
+      priceSource: holding.priceSource,
     }));
 
     return NextResponse.json(formattedHoldings);
@@ -150,8 +156,8 @@ export async function POST(request: NextRequest) {
       valueINR: Number(newHolding.valueINR),
       valueUSD: Number(newHolding.valueUSD),
       entryCurrency: newHolding.entryCurrency,
-      value: Number(newHolding.valueSGD), // Backward compatibility
-      currentValue: Number(newHolding.valueSGD), // Compatibility
+      value: Number(newHolding.valueSGD),
+      currentValue: Number(newHolding.valueSGD),
       category: newHolding.category.name,
       location: newHolding.location,
       quantity: newHolding.quantity ? Number(newHolding.quantity) : null,

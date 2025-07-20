@@ -1,0 +1,103 @@
+export interface WeightedAverageResult {
+  newQuantity: number;
+  newAvgCostBasis: number;
+  newTotalInvested: number;
+  isNewHolding: boolean;
+  existingData?: {
+    currentQuantity: number;
+    currentAvgPrice: number;
+    currentTotalInvested: number;
+  };
+}
+
+export async function calculateWeightedAverage(
+  symbol: string,
+  addedQuantity: number,
+  addedUnitPrice: number,
+  addedTotalCost: number
+): Promise<WeightedAverageResult> {
+  
+  try {
+    // Use absolute URL for both browser and Node.js contexts
+    const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:3001';
+    const response = await fetch(`${baseUrl}/api/holdings`);
+    
+    if (!response.ok) {
+      throw new Error(`Holdings API failed: ${response.status}`);
+    }
+    
+    const holdings = await response.json();
+    
+    // Find existing holding by symbol (case-insensitive)
+    const existingHolding = holdings.find((h: any) => 
+      h.symbol.toUpperCase() === symbol.toUpperCase()
+    );
+    
+    if (!existingHolding) {
+      // New holding
+      return {
+        newQuantity: addedQuantity,
+        newAvgCostBasis: addedUnitPrice,
+        newTotalInvested: addedTotalCost,
+        isNewHolding: true
+      };
+    }
+    
+    // Check if existing holding has quantity data
+    const currentQuantity = Number(existingHolding.quantity) || 0;
+    const currentUnitPrice = Number(existingHolding.unitPrice) || Number(existingHolding.currentUnitPrice) || 0;
+    
+    if (currentQuantity === 0 || currentUnitPrice === 0) {
+      // Existing holding but no quantity/price data - treat as new
+      return {
+        newQuantity: addedQuantity,
+        newAvgCostBasis: addedUnitPrice,
+        newTotalInvested: addedTotalCost,
+        isNewHolding: false,
+        existingData: {
+          currentQuantity: 0,
+          currentAvgPrice: 0,
+          currentTotalInvested: 0
+        }
+      };
+    }
+    
+    // Calculate weighted average
+    const currentTotalInvested = currentQuantity * currentUnitPrice;
+    const newQuantity = currentQuantity + addedQuantity;
+    const newTotalInvested = currentTotalInvested + addedTotalCost;
+    const newAvgCostBasis = newTotalInvested / newQuantity;
+    
+    return {
+      newQuantity,
+      newAvgCostBasis,
+      newTotalInvested,
+      isNewHolding: false,
+      existingData: {
+        currentQuantity,
+        currentAvgPrice: currentUnitPrice,
+        currentTotalInvested
+      }
+    };
+    
+  } catch (error) {
+    console.error('Weighted average calculation error:', error);
+    
+    // Fallback to new holding if API fails
+    return {
+      newQuantity: addedQuantity,
+      newAvgCostBasis: addedUnitPrice,
+      newTotalInvested: addedTotalCost,
+      isNewHolding: true
+    };
+  }
+}
+
+export function calculateUnitsFromTotal(totalAmount: number, unitPrice: number): number {
+  if (unitPrice <= 0) return 0;
+  return totalAmount / unitPrice;
+}
+
+export function calculateTotalFromUnits(quantity: number, unitPrice: number): number {
+  return quantity * unitPrice;
+}

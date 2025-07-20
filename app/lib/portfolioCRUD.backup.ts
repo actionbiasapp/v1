@@ -1,5 +1,5 @@
 // app/lib/portfolioCRUD.ts
-// Enhanced Portfolio CRUD utilities with weighted average support
+// Portfolio CRUD utilities extracted from FixedPortfolioGrid.tsx
 
 import { type CurrencyCode } from '@/app/lib/currency';
 import { HoldingFormData } from '@/app/lib/types/shared';
@@ -13,8 +13,8 @@ export async function convertToAllCurrencies(amount: number, fromCurrency: Curre
       body: JSON.stringify({ 
         amount, 
         fromCurrency, 
-        toCurrency: 'SGD',
-        convertToAll: true
+        toCurrency: 'SGD', // Fix: Use specific target currency instead of 'ALL'
+        convertToAll: true  // Fix: Add convertToAll flag
       })
     });
     
@@ -26,6 +26,7 @@ export async function convertToAllCurrencies(amount: number, fromCurrency: Curre
     
     const data = await response.json();
     
+    // Handle different response formats
     if (data.SGD && data.USD && data.INR) {
       return {
         SGD: data.SGD,
@@ -33,6 +34,7 @@ export async function convertToAllCurrencies(amount: number, fromCurrency: Curre
         INR: data.INR
       };
     } else {
+      // Fallback to individual conversions
       return await fallbackConversion(amount, fromCurrency);
     }
   } catch (error) {
@@ -44,11 +46,13 @@ export async function convertToAllCurrencies(amount: number, fromCurrency: Curre
 // Fallback conversion with improved rates
 async function fallbackConversion(amount: number, fromCurrency: CurrencyCode) {
   try {
+    // Try to get current rates from the exchange rates API
     const ratesResponse = await fetch('/api/exchange-rates');
     if (ratesResponse.ok) {
       const ratesData = await ratesResponse.json();
       const rates = ratesData.rates;
       
+      // Convert to SGD first, then to other currencies
       let sgdAmount = amount;
       if (fromCurrency === 'USD') {
         sgdAmount = amount * rates.USD_TO_SGD;
@@ -66,6 +70,7 @@ async function fallbackConversion(amount: number, fromCurrency: CurrencyCode) {
     console.error('Fallback conversion error:', error);
   }
   
+  // Ultimate fallback with hardcoded rates
   const fallbackRates = { SGD: 1, USD: 0.74, INR: 63.5 };
   const sgdAmount = amount * (fallbackRates.SGD / fallbackRates[fromCurrency]);
   return {
@@ -75,54 +80,22 @@ async function fallbackConversion(amount: number, fromCurrency: CurrencyCode) {
   };
 }
 
-// Enhanced create holding with weighted average support
+// Create new holding
 export async function createHolding(formData: HoldingFormData, categoryName: string) {
-  // Check if this is a confirmed holding with calculated values
-  const isConfirmedHolding = formData._confirmedQuantity && formData._confirmedUnitPrice;
+  // Convert amount to all currencies
+  const convertedValues = await convertToAllCurrencies(formData.amount, formData.currency);
   
-  let convertedValues;
-  let holdingData;
-  
-  if (isConfirmedHolding) {
-    // Use confirmed total cost for conversion
-    const confirmedTotalCost = formData._confirmedTotalCost || formData.amount;
-    convertedValues = await convertToAllCurrencies(confirmedTotalCost, formData.currency);
-    
-    holdingData = {
-      symbol: formData.symbol.toUpperCase(),
-      name: formData.name,
-      valueSGD: convertedValues.SGD,
-      valueINR: convertedValues.INR,
-      valueUSD: convertedValues.USD,
-      value: convertedValues.SGD, // Backward compatibility
-      entryCurrency: formData.currency,
-      category: categoryName,
-      location: formData.location,
-      
-      // Enhanced fields for live pricing
-      quantity: formData._confirmedQuantity,
-      unitPrice: formData._confirmedUnitPrice,
-      currentUnitPrice: formData._confirmedUnitPrice, // Start with purchase price
-      costBasis: confirmedTotalCost,
-      priceSource: formData._priceSource || 'manual',
-      priceUpdated: formData._enableAutoPricing ? new Date().toISOString() : null
-    };
-  } else {
-    // Original flow for non-confirmed holdings
-    convertedValues = await convertToAllCurrencies(formData.amount, formData.currency);
-    
-    holdingData = {
-      symbol: formData.symbol.toUpperCase(),
-      name: formData.name,
-      valueSGD: convertedValues.SGD,
-      valueINR: convertedValues.INR,
-      valueUSD: convertedValues.USD,
-      value: convertedValues.SGD,
-      entryCurrency: formData.currency,
-      category: categoryName,
-      location: formData.location
-    };
-  }
+  const holdingData = {
+    symbol: formData.symbol.toUpperCase(),
+    name: formData.name,
+    valueSGD: convertedValues.SGD,
+    valueINR: convertedValues.INR,
+    valueUSD: convertedValues.USD,
+    value: convertedValues.SGD, // Backward compatibility
+    entryCurrency: formData.currency,
+    category: categoryName,
+    location: formData.location
+  };
 
   const response = await fetch('/api/holdings', {
     method: 'POST',
@@ -136,6 +109,7 @@ export async function createHolding(formData: HoldingFormData, categoryName: str
 
 // Update existing holding
 export async function updateHolding(holdingId: string, formData: HoldingFormData, categoryName: string) {
+  // Convert amount to all currencies
   const convertedValues = await convertToAllCurrencies(formData.amount, formData.currency);
   
   const holdingData = {
@@ -144,7 +118,7 @@ export async function updateHolding(holdingId: string, formData: HoldingFormData
     valueSGD: convertedValues.SGD,
     valueINR: convertedValues.INR,
     valueUSD: convertedValues.USD,
-    value: convertedValues.SGD,
+    value: convertedValues.SGD, // Backward compatibility
     entryCurrency: formData.currency,
     category: categoryName,
     location: formData.location

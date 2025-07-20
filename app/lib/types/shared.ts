@@ -12,7 +12,13 @@ export interface Holding {
   entryCurrency: string;
   category: string;
   location: string;
-  quantity?: number | null;
+  quantity?: number;
+  unitPrice?: number;
+  _confirmedQuantity?: number;
+  _confirmedUnitPrice?: number;
+  _confirmedTotalCost?: number;
+  _priceSource?: string;
+  _enableAutoPricing?: boolean;
   costBasis?: number | null;
   // Backward compatibility fields
   value?: number;
@@ -95,7 +101,13 @@ export interface HoldingFormData {
   amount: number;
   currency: 'SGD' | 'USD' | 'INR';
   location: string;
-}
+  quantity?: number;
+  unitPrice?: number;
+  _confirmedQuantity?: number;
+  _confirmedUnitPrice?: number;
+  _confirmedTotalCost?: number;
+  _priceSource?: string;
+  _enableAutoPricing?: boolean;}
 
 export interface PortfolioCardProps {
   category: CategoryData;

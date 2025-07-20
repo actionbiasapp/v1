@@ -281,25 +281,21 @@ model AssetCategory {
 }
 
 model Holdings {
-  id               String        @id @default(cuid())
-  userId           String
-  categoryId       String
-  symbol           String
-  name             String
-  quantity         Decimal?
-  valueSGD         Decimal
-  valueINR         Decimal
-  valueUSD         Decimal
-  entryCurrency    String        @default("SGD")
-  costBasis        Decimal?
-  location         String
-  updatedAt        DateTime      @default(now())
-  currentUnitPrice Decimal?
-  priceSource      String?
-  priceUpdated     DateTime?
-  unitPrice        Decimal?
-  category         AssetCategory @relation(fields: [categoryId], references: [id])
-  user             User          @relation(fields: [userId], references: [id])
+  id            String        @id @default(cuid())
+  userId        String
+  categoryId    String
+  symbol        String
+  name          String
+  quantity      Decimal?
+  valueSGD      Decimal
+  valueINR      Decimal
+  valueUSD      Decimal
+  entryCurrency String        @default("SGD")
+  costBasis     Decimal?
+  location      String
+  updatedAt     DateTime      @default(now())
+  category      AssetCategory @relation(fields: [categoryId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
 }
 
 model ExchangeRate {
