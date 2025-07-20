@@ -3,7 +3,7 @@ import { PriceDetectionService } from '../../../lib/priceDetection';
 
 export async function POST(request: NextRequest) {
   try {
-    const { symbol } = await request.json();
+    const { symbol, assetType } = await request.json();
     
     if (!symbol || symbol.length < 1) {
       return NextResponse.json({ 
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     }
     
     const detector = new PriceDetectionService();
-    const result = await detector.detectPriceSource(symbol);
+    const result = await detector.detectPriceSource(symbol, assetType);
     
     return NextResponse.json(result);
   } catch (error) {
@@ -31,6 +31,6 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({ 
     message: "POST to detect price source for a symbol",
-    usage: "POST { symbol: 'AAPL' }"
+    usage: "POST { symbol: 'AAPL', assetType: 'stock|crypto|manual' }"
   });
 }

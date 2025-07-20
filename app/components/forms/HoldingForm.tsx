@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { type CurrencyCode } from '@/app/lib/currency';
 import { HoldingFormData } from '@/app/lib/types/shared';
 import CurrencySelector from '../CurrencySelector';
@@ -32,32 +32,40 @@ const HoldingForm = React.memo(({
   const [priceDetectionLoading, setPriceDetectionLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [weightedAverage, setWeightedAverage] = useState<WeightedAverageResult | null>(null);
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Stable event handlers
-  const handleSymbolChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSymbolChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const symbol = e.target.value.toUpperCase();
     onFormDataChange({ ...formData, symbol });
-    
+
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+    }
+
     if (symbol.length >= 2) {
       setPriceDetectionLoading(true);
-      try {
-        const response = await fetch('/api/prices/detect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbol })
-        });
-        const detection = await response.json();
-        setPriceDetection(detection);
-        
-        // Auto-populate company name if available
-        if (detection.companyName && !formData.name) {
-          onFormDataChange({ ...formData, symbol, name: detection.companyName });
-        }      } catch (error) {
-        console.error('Price detection failed:', error);
-        setPriceDetection(null);
-      } finally {
-        setPriceDetectionLoading(false);
-      }
+      debounceTimeout.current = setTimeout(async () => {
+        try {
+          const response = await fetch('/api/prices/detect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol, assetType: formData.assetType })
+          });
+          const detection = await response.json();
+          setPriceDetection(detection);
+
+          // Always update company name when a new one is detected
+          if (detection.companyName) {
+            onFormDataChange({ ...formData, symbol, name: detection.companyName });
+          }
+        } catch (error) {
+          console.error('Price detection failed:', error);
+          setPriceDetection(null);
+        } finally {
+          setPriceDetectionLoading(false);
+        }
+      }, 400); // 400ms debounce
     } else {
       setPriceDetection(null);
     }
@@ -173,6 +181,22 @@ const HoldingForm = React.memo(({
       
       <form onSubmit={handleSubmit}>
         <div className="space-y-3 mb-4">
+          {/* Asset Type Selector */}
+          <div className="mb-3">
+            <label className="block text-sm font-medium text-slate-300 mb-1">
+              Asset Type
+            </label>
+            <select
+              value={formData.assetType || 'stock'}
+              onChange={e => onFormDataChange({ ...formData, assetType: e.target.value as 'stock' | 'crypto' | 'manual' })}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
+              disabled={loading}
+            >
+              <option value="stock">Stock (FMP API)</option>
+              <option value="crypto">Crypto (CoinGecko)</option>
+              <option value="manual">Manual Entry</option>
+            </select>
+          </div>
           <div style={gridStyle}>
             <input
               type="text"

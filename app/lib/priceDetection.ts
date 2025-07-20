@@ -14,21 +14,38 @@ export interface PriceDetectionResult {
     valueUSD: number;
   }>;
   error?: string;
+  assetType?: 'stock' | 'crypto' | 'manual'; // NEW
 }
 
 export class PriceDetectionService {
   private readonly FMP_API_KEY = '9ERUMtxQIBjyPwr5hTMVKSG9irnMBdin';
   private readonly FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
 
-  async detectPriceSource(symbol: string): Promise<PriceDetectionResult> {
+  async detectPriceSource(symbol: string, assetType?: 'stock' | 'crypto' | 'manual'): Promise<PriceDetectionResult> {
     try {
-      // Get basic price detection
+      // User-specified routing
+      if (assetType === 'crypto') {
+        const result = await this.fetchCryptoPrice(symbol);
+        return { ...result, assetType };
+      }
+      if (assetType === 'stock') {
+        const result = await this.fetchFMPPrice(symbol);
+        return { ...result, assetType };
+      }
+      if (assetType === 'manual') {
+        return {
+          symbol,
+          supportsAutoPricing: false,
+          source: 'manual',
+          currency: 'USD',
+          confidence: 'low',
+          assetType: 'manual'
+        };
+      }
+      // Fallback: auto-detection for backward compatibility
       const priceResult = await this.detectBasicPricing(symbol);
-      
-      // Enhance with company name and existing holdings
       const enhanced = await this.enhanceWithCompanyData(symbol, priceResult);
-      
-      return enhanced;
+      return { ...enhanced, assetType: enhanced.source === 'fmp' ? 'stock' : enhanced.source === 'coingecko' ? 'crypto' : 'manual' };
     } catch (error) {
       console.error('Enhanced price detection failed:', error);
       return {
@@ -37,9 +54,68 @@ export class PriceDetectionService {
         source: 'manual',
         currency: 'USD',
         confidence: 'low',
-        error: error instanceof Error ? error.message : 'Detection failed'
+        error: error instanceof Error ? error.message : 'Detection failed',
+        assetType: 'manual'
       };
     }
+  }
+
+  private async fetchFMPPrice(symbol: string): Promise<PriceDetectionResult> {
+    try {
+      const response = await fetch(`${this.FMP_BASE_URL}/quote/${symbol}?apikey=${this.FMP_API_KEY}`);
+      const data = await response.json();
+      if (data && data[0] && data[0].price) {
+        return {
+          symbol,
+          supportsAutoPricing: true,
+          source: 'fmp',
+          currentPrice: data[0].price,
+          currency: 'USD',
+          confidence: 'high',
+          assetType: 'stock'
+        };
+      }
+    } catch (error) {
+      console.error('FMP detection failed:', error);
+    }
+    return {
+      symbol,
+      supportsAutoPricing: false,
+      source: 'manual',
+      currency: 'USD',
+      confidence: 'low',
+      assetType: 'stock'
+    };
+  }
+
+  private async fetchCryptoPrice(symbol: string): Promise<PriceDetectionResult> {
+    try {
+      const coinId = this.getCoinGeckoId(symbol);
+      const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+      const data = await response.json();
+      if (data[coinId]?.usd) {
+        return {
+          symbol,
+          supportsAutoPricing: true,
+          source: 'coingecko',
+          currentPrice: data[coinId].usd,
+          currency: 'USD',
+          confidence: 'high',
+          companyName: this.getCryptoDisplayName(symbol),
+          assetType: 'crypto'
+        };
+      }
+    } catch (error) {
+      console.error('CoinGecko detection failed:', error);
+    }
+    return {
+      symbol,
+      supportsAutoPricing: false,
+      source: 'manual',
+      currency: 'USD',
+      confidence: 'low',
+      assetType: 'crypto'
+    };
   }
 
   private async detectBasicPricing(symbol: string): Promise<PriceDetectionResult> {
@@ -48,7 +124,6 @@ export class PriceDetectionService {
       try {
         const response = await fetch(`${this.FMP_BASE_URL}/quote/${symbol}?apikey=${this.FMP_API_KEY}`);
         const data = await response.json();
-        
         if (data && data[0] && data[0].price) {
           return {
             symbol,
@@ -56,21 +131,20 @@ export class PriceDetectionService {
             source: 'fmp',
             currentPrice: data[0].price,
             currency: 'USD',
-            confidence: 'high'
+            confidence: 'high',
+            assetType: 'stock'
           };
         }
       } catch (error) {
         console.error('FMP detection failed:', error);
       }
     }
-
     // Try CoinGecko for crypto
     if (symbol.match(/^(BTC|ETH|ADA|DOT|SOL|AVAX|MATIC|LINK|UNI|AAVE)$/i)) {
       try {
         const coinId = this.getCoinGeckoId(symbol);
         const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
         const data = await response.json();
-        
         if (data[coinId]?.usd) {
           return {
             symbol,
@@ -78,35 +152,35 @@ export class PriceDetectionService {
             source: 'coingecko',
             currentPrice: data[coinId].usd,
             currency: 'USD',
-            confidence: 'high'
+            confidence: 'high',
+            companyName: this.getCryptoDisplayName(symbol),
+            assetType: 'crypto'
           };
         }
       } catch (error) {
         console.error('CoinGecko detection failed:', error);
       }
     }
-
     // Fallback to manual
     return {
       symbol,
       supportsAutoPricing: false,
       source: 'manual',
       currency: 'USD',
-      confidence: 'low'
+      confidence: 'low',
+      assetType: 'manual'
     };
   }
 
   private async enhanceWithCompanyData(symbol: string, baseResult: PriceDetectionResult): Promise<PriceDetectionResult> {
-    let companyName: string | undefined;
-    let industry: string | undefined;
+    let companyName: string | undefined = baseResult.companyName;
+    let industry: string | undefined = baseResult.industry;
     let existingHoldings: any[] = [];
-
     // Get company name from FMP if it's a stock
-    if (baseResult.source === 'fmp') {
+    if (baseResult.source === 'fmp' && !companyName) {
       try {
         const profileResponse = await fetch(`${this.FMP_BASE_URL}/profile/${symbol}?apikey=${this.FMP_API_KEY}`);
         const profileData = await profileResponse.json();
-        
         if (profileData && profileData[0]) {
           companyName = profileData[0].companyName;
           industry = profileData[0].industry;
@@ -115,12 +189,10 @@ export class PriceDetectionService {
         console.error('Company profile fetch failed:', error);
       }
     }
-
     // Get existing holdings for this symbol
     try {
       const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:3000';
       const holdingsResponse = await fetch(`${baseUrl}/api/holdings`);
-      
       if (holdingsResponse.ok) {
         const holdings = await holdingsResponse.json();
         existingHoldings = holdings
@@ -135,7 +207,6 @@ export class PriceDetectionService {
     } catch (error) {
       console.error('Existing holdings fetch failed:', error);
     }
-
     return {
       ...baseResult,
       companyName,
@@ -158,5 +229,18 @@ export class PriceDetectionService {
       'AAVE': 'aave'
     };
     return mapping[symbol.toUpperCase()] || symbol.toLowerCase();
+  }
+
+  private getCryptoDisplayName(symbol: string): string {
+    const cryptoNames: Record<string, string> = {
+      'BTC': 'Bitcoin',
+      'ETH': 'Ethereum',
+      'WBTC': 'Wrapped Bitcoin',
+      'USDC': 'USD Coin',
+      'DOGE': 'Dogecoin',
+      'ADA': 'Cardano',
+      // Add more as needed...
+    };
+    return cryptoNames[symbol.toUpperCase()] || symbol.toUpperCase();
   }
 }

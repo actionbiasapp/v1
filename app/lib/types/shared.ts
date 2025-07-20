@@ -23,6 +23,7 @@ export interface Holding {
   // Backward compatibility fields
   value?: number;
   currentValue?: number;
+  assetType?: 'stock' | 'crypto' | 'manual'; // NEW
 }
 
 // UNIFIED ACTION ITEM INTERFACE
@@ -107,7 +108,9 @@ export interface HoldingFormData {
   _confirmedUnitPrice?: number;
   _confirmedTotalCost?: number;
   _priceSource?: string;
-  _enableAutoPricing?: boolean;}
+  _enableAutoPricing?: boolean;
+  assetType?: 'stock' | 'crypto' | 'manual'; // NEW
+}
 
 export interface PortfolioCardProps {
   category: CategoryData;

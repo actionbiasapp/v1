@@ -128,7 +128,8 @@ export async function POST() {
   try {
     const priceService = new DynamicPriceService();
     
-    const testSymbols = ['VUAA.L', 'S27.SI'];
+    const holdings = await prisma.holdings.findMany({ select: { symbol: true } });
+    const testSymbols = holdings.map(h => h.symbol);
     const results = [];
     
     for (const symbol of testSymbols) {
