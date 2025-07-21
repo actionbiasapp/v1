@@ -18,8 +18,15 @@ export interface PriceDetectionResult {
 }
 
 export class PriceDetectionService {
-  private readonly FMP_API_KEY = '9ERUMtxQIBjyPwr5hTMVKSG9irnMBdin';
+  private readonly FMP_API_KEY: string;
   private readonly FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
+
+  constructor() {
+    this.FMP_API_KEY = process.env.FMP_API_KEY || '';
+    if (!this.FMP_API_KEY) {
+      console.warn('FMP_API_KEY is not set. Price detection for stocks will fail.');
+    }
+  }
 
   async detectPriceSource(symbol: string, assetType?: 'stock' | 'crypto' | 'manual'): Promise<PriceDetectionResult> {
     try {
