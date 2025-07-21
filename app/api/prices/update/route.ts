@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const FMP_API_KEY = '9ERUMtxQIBjyPwr5hTMVKSG9irnMBdin';
+const FMP_API_KEY = process.env.FMP_API_KEY || '';
 const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
 const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_API_KEY || 'demo';
 
@@ -120,38 +120,95 @@ class DynamicPriceService {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Vercel's cron jobs require a GET handler to work, even if it's just for show.
+  // We can also use this for manual triggering.
+  if (req.method === 'GET') {
+    // We'll just call the POST handler internally.
+    // This allows manual runs via browser or curl.
+    return POST(req);
+  }
   return NextResponse.json({ message: "Live pricing system ready. Use POST to update." });
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const jobName = 'update-all-prices';
+  let logId: string;
+
+  // 1. Create initial log entry
+  try {
+    const logEntry = await prisma.cronJobLog.create({
+      data: {
+        jobName,
+        status: 'PENDING',
+        message: 'Cron job started...',
+      },
+    });
+    logId = logEntry.id;
+  } catch (error) {
+    console.error('Failed to create initial cron job log:', error);
+    // If logging fails, we can't proceed with a traceable job.
+    return NextResponse.json(
+      { success: false, error: 'Failed to initialize logging' },
+      { status: 500 }
+    );
+  }
+
   try {
     const priceService = new DynamicPriceService();
     
     const holdings = await prisma.holdings.findMany({ select: { symbol: true } });
-    const testSymbols = holdings.map(h => h.symbol);
+    const symbols = [...new Set(holdings.map(h => h.symbol))]; // Get unique symbols
     const results = [];
     
-    for (const symbol of testSymbols) {
+    for (const symbol of symbols) {
       const result = await priceService.updatePriceForSymbol(symbol);
       results.push(result);
+      // Add a small delay to respect API rate limits
       await new Promise(resolve => setTimeout(resolve, 300));
     }
+
+    const summary = {
+      updated: results.filter(r => r.action === 'updated').length,
+      yesterday: results.filter(r => r.action === 'used_yesterday').length,
+      failed: results.filter(r => r.action === 'failed').length,
+      skipped: results.filter(r => r.action === 'skipped').length,
+      total: symbols.length
+    };
+    
+    const successMessage = `Successfully updated ${summary.updated}/${summary.total} symbols. Used yesterday's price for ${summary.yesterday}. Failed: ${summary.failed}.`;
+
+    // 2. Update log to SUCCESS
+    await prisma.cronJobLog.update({
+      where: { id: logId },
+      data: {
+        status: 'SUCCESS',
+        message: successMessage,
+      },
+    });
     
     return NextResponse.json({ 
       success: true, 
+      summary,
       results,
-      routing: results.map(r => ({ symbol: r.symbol, detectedSource: r.source })),
-      summary: {
-        updated: results.filter(r => r.action === 'updated').length,
-        yesterday: results.filter(r => r.action === 'used_yesterday').length,
-        failed: results.filter(r => r.action === 'failed').length
-      }
     });
+
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error(`Cron job '${jobName}' failed:`, errorMessage);
+
+    // 3. Update log to FAILURE
+    await prisma.cronJobLog.update({
+      where: { id: logId },
+      data: {
+        status: 'FAILURE',
+        message: errorMessage,
+      },
+    });
+
     return NextResponse.json({ 
       success: false, 
-      error: error instanceof Error ? error.message : "Unknown error" 
+      error: errorMessage 
     }, { status: 500 });
   }
 }

@@ -350,3 +350,13 @@ model YearlyData {
   @@unique([userId, year])
   @@index([userId, year])
 }
+
+model CronJobLog {
+  id        String   @id @default(cuid())
+  jobName   String
+  status    String   // SUCCESS or FAILURE
+  message   String?
+  runAt     DateTime @default(now())
+
+  @@index([jobName, runAt])
+}
