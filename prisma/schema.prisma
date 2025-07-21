@@ -47,6 +47,7 @@ model User {
   recommendations     Recommendation[]
   srsPlans            SRSPlan[]
   savingsRecords      SavingsRecord[]
+  yearlyData          YearlyData[]
 }
 
 model IncomeRecord {
@@ -326,4 +327,26 @@ model Recommendation {
   completed    Boolean  @default(false)
   createdAt    DateTime @default(now())
   user         User     @relation(fields: [userId], references: [id])
+}
+
+model YearlyData {
+  id           String   @id @default(cuid())
+  userId       String
+  year         Int
+  netWorth     Decimal  @default(0)
+  income       Decimal  @default(0)
+  expenses     Decimal  @default(0)
+  savings      Decimal  @default(0)
+  srs          Decimal  @default(0)
+  marketGains  Decimal  @default(0)
+  returnPercent Decimal @default(0)
+  notes        String?
+  isEstimated  Boolean  @default(false)
+  confidence   String   @default("medium")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year])
+  @@index([userId, year])
 }

@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { YearlyData } from '@/app/lib/types/shared';
 import AddYearForm from '@/app/components/forms/AddYearForm';
+import EditYearForm from '@/app/components/forms/EditYearForm';
 
 interface NetWorthDataManagerProps {
   yearlyData: YearlyData[];
-  onAdd: (year: number, netWorth: number, annualInvestment: number) => void;
-  onEdit: (year: number) => void;
+  onAdd: (year: number, netWorth: number, savings: number) => void;
+  onEdit: (year: number, netWorth: number, savings: number) => void;
   onDelete: (year: number) => void;
   onClose: () => void;
 }
@@ -20,10 +21,16 @@ export default function NetWorthDataManager({
   onClose 
 }: NetWorthDataManagerProps) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingYear, setEditingYear] = useState<YearlyData | null>(null);
 
-  const handleAdd = (year: number, netWorth: number, annualInvestment: number) => {
-    onAdd(year, netWorth, annualInvestment);
+  const handleAdd = (year: number, netWorth: number, savings: number) => {
+    onAdd(year, netWorth, savings);
     setShowAddForm(false);
+  };
+
+  const handleEdit = (year: number, netWorth: number, savings: number) => {
+    onEdit(year, netWorth, savings);
+    setEditingYear(null);
   };
 
   return (
@@ -72,9 +79,7 @@ export default function NetWorthDataManager({
                   <tr className="border-b border-slate-700">
                     <th className="text-left py-3 px-4 font-medium text-slate-300">Year</th>
                     <th className="text-right py-3 px-4 font-medium text-slate-300">Net Worth</th>
-                    <th className="text-right py-3 px-4 font-medium text-slate-300">Investment</th>
-                    <th className="text-right py-3 px-4 font-medium text-slate-300">Market Gains</th>
-                    <th className="text-right py-3 px-4 font-medium text-slate-300">Return %</th>
+                    <th className="text-right py-3 px-4 font-medium text-slate-300">Savings</th>
                     <th className="text-center py-3 px-4 font-medium text-slate-300">Actions</th>
                   </tr>
                 </thead>
@@ -87,43 +92,29 @@ export default function NetWorthDataManager({
                       <td className="py-3 px-4 text-right text-white">
                         ${data.netWorth.toLocaleString()}
                       </td>
-                      <td className="py-3 px-4 text-right text-blue-400">
-                        ${data.annualInvestment.toLocaleString()}
+                      <td className="py-3 px-4 text-right text-emerald-400">
+                        ${data.savings?.toLocaleString()}
                       </td>
-                      <td className={`py-3 px-4 text-right font-medium ${
-                        data.marketGains >= 0 ? 'text-emerald-400' : 'text-red-400'
-                      }`}>
-                        {data.marketGains >= 0 ? '+' : ''}${data.marketGains.toLocaleString()}
-                      </td>
-                      <td className={`py-3 px-4 text-right font-medium ${
-                        data.returnPercent >= 0 ? 'text-emerald-400' : 'text-red-400'
-                      }`}>
-                        {data.returnPercent >= 0 ? '+' : ''}{data.returnPercent.toFixed(1)}%
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex gap-2 justify-center">
-                          <button
-                            onClick={() => onEdit(data.year)}
-                            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                            title="Edit"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M12 20h9"/>
-                              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => onDelete(data.year)}
-                            className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                            title="Delete"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M3 6h18"/>
-                              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-                              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-                            </svg>
-                          </button>
-                        </div>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          className="text-blue-400 hover:text-blue-600 mr-2"
+                          onClick={() => setEditingYear(data)}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                          </svg>
+                        </button>
+                        <button
+                          className="text-red-400 hover:text-red-600"
+                          onClick={() => onDelete(data.year)}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 6h18"/>
+                            <path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/>
+                            <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>
+                          </svg>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -145,17 +136,21 @@ export default function NetWorthDataManager({
           </div>
         </div>
 
-        {/* Add Year Form - Overlaid */}
+        {/* Add Year Form Modal */}
         {showAddForm && (
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md border border-slate-700">
-              <h3 className="text-lg font-bold text-white mb-4">Add New Year Data</h3>
-              
-              <AddYearForm 
-                onAdd={handleAdd}
-                onCancel={() => setShowAddForm(false)}
-              />
-            </div>
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+            <AddYearForm onAdd={handleAdd} onCancel={() => setShowAddForm(false)} />
+          </div>
+        )}
+        {/* Edit Year Form Modal */}
+        {editingYear && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+            <EditYearForm
+              yearlyData={yearlyData}
+              editingYear={editingYear.year}
+              onEdit={handleEdit}
+              onCancel={() => setEditingYear(null)}
+            />
           </div>
         )}
       </div>

@@ -141,14 +141,14 @@ const PortfolioCard = React.memo(({
       className={cardClasses}
       style={{
         overflow: isExpanded ? 'visible' : 'hidden',
-        position: 'relative'
+        position: 'relative',
+        cursor: 'pointer'
       }}
+      onClick={handleToggleExpand}
     >
       {/* Header - Click to expand/collapse */}
       <div 
         className="card-header"
-        onClick={handleToggleExpand}
-        style={{ cursor: 'pointer' }}
       >
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <div 
@@ -180,12 +180,6 @@ const PortfolioCard = React.memo(({
               backgroundColor: getProgressColor(category.status)
             }}
           />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)' }}>
-          <span>{progressPercentage.toFixed(1)}% allocated</span>
-          <span className={`status-badge status-${category.status}`}>
-            {category.statusText}
-          </span>
         </div>
       </div>
 

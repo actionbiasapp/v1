@@ -165,7 +165,7 @@ export default function AppleRadialAllocation({ categories, className = '' }: Ap
                     category.status === 'underweight' ? 'bg-yellow-900/50 text-yellow-300' :
                     'bg-red-900/50 text-red-300'
                   }`}>
-                    {category.statusText}
+                    {category.shortStatus}
                   </div>
                 </div>
               </div>
@@ -296,9 +296,13 @@ export default function AppleRadialAllocation({ categories, className = '' }: Ap
             </div>
 
             {/* Description - use centralized callout */}
-            {selectedCategory.callout && (
-              <div className="bg-gray-700/30 rounded-lg p-4">
-                <p className="text-sm text-gray-300">{selectedCategory.callout}</p>
+            {selectedCategory.statusText && (
+              <div className={`rounded-lg p-4 text-sm ${
+                selectedCategory.status === 'perfect' ? 'bg-green-900/50 text-green-300' :
+                selectedCategory.status === 'underweight' ? 'bg-yellow-900/50 text-yellow-300' :
+                'bg-red-900/50 text-red-300'
+              }`}>
+                <p className="text-sm text-gray-300">{selectedCategory.statusText}</p>
               </div>
             )}
           </div>

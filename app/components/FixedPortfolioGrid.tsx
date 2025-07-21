@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { type CurrencyCode } from '@/app/lib/currency';
 import { CategoryData } from '@/app/lib/types/shared';
 import PortfolioCard from './PortfolioCard';
@@ -9,8 +9,8 @@ interface FixedPortfolioGridProps {
   categories: CategoryData[];
   totalValue: number;
   expandedCards: Set<string>;
-  onToggleExpand: (categoryName: string) => void;
   displayCurrency: CurrencyCode;
+  onToggleExpand: (categoryName: string) => void;
   onHoldingsUpdate?: () => void;
 }
 
@@ -18,8 +18,8 @@ export default function FixedPortfolioGrid({
   categories,
   totalValue,
   expandedCards,
-  onToggleExpand,
   displayCurrency,
+  onToggleExpand,
   onHoldingsUpdate
 }: FixedPortfolioGridProps) {
 
@@ -30,7 +30,7 @@ export default function FixedPortfolioGrid({
 
   // Build grid className for CSS styling
   const gridClassName = useMemo(() => {
-    return expandedCardName 
+    return expandedCardName
       ? `fixed-portfolio-grid grid-${expandedCardName.toLowerCase()}-expanded`
       : 'fixed-portfolio-grid';
   }, [expandedCardName]);

@@ -84,9 +84,14 @@ export interface Intelligence {
 export interface YearlyData {
   year: number;
   netWorth: number;
-  annualInvestment: number;
-  marketGains: number; // calculated field
-  returnPercent: number; // calculated field
+  annualInvestment?: number;
+  savings: number;
+  income: number;
+  expenses: number;
+  srsContributions: number;
+  marketGains?: number; // calculated field
+  returnPercent?: number; // calculated field
+  savingsRate?: number;
 }
 
 export interface EditFormData {
@@ -204,6 +209,7 @@ export interface CategoryData {
   completionPercent: number;     // NEW: (currentPercent / target) * 100
   status: 'perfect' | 'underweight' | 'excess';
   statusText: string;             // Human readable status
+  shortStatus?: string;           // Short status for summary cards
   callout?: string;               // Intelligence callout message
   
   // Enhanced properties for UI

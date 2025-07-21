@@ -7,7 +7,6 @@ import FixedPortfolioGrid from './FixedPortfolioGrid';
 import PortfolioStatusMetrics from './PortfolioStatusMetrics';
 import TaxIntelligenceDisplay from './TaxIntelligenceDisplay';
 import InsightsSection from './InsightsSection';
-import AllocationTargetEditor from './AllocationTargetEditor';
 import { CurrencyToggleSimple } from './CurrencyToggle';
 import FinancialSetupButton from './FinancialSetupButton';
 import { type CurrencyCode } from '@/app/lib/currency';
@@ -39,9 +38,9 @@ export default function PortfolioDashboard() {
   // UI State
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [displayCurrency, setDisplayCurrency] = useState<CurrencyCode>('SGD');
-  const [isAllocationEditorOpen, setIsAllocationEditorOpen] = useState(false);
   const [allocationTargets, setAllocationTargets] = useState(DEFAULT_TARGETS);
   const [showChartView, setShowChartView] = useState(false);
+  const [yearlyData, setYearlyData] = useState<any[]>([]); // State for yearly data
 
   // Portfolio Data Hook - handles all API integration
   const {
@@ -59,23 +58,54 @@ export default function PortfolioDashboard() {
     handleInsightAction
   } = usePortfolioData();
 
-  // Load allocation targets from API
-  useEffect(() => {
-    const loadAllocationTargets = async () => {
-      try {
-        const response = await fetch('/api/financial-profile');
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.allocationTargets) {
-            setAllocationTargets(data.allocationTargets);
-          }
+  // Function to load yearly data
+  const loadYearlyData = async () => {
+    try {
+      const response = await fetch('/api/yearly-data');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setYearlyData(data.data);
         }
-      } catch (error) {
-        console.error('Failed to load allocation targets:', error);
       }
-    };
+    } catch (error) {
+      console.error('Failed to load yearly data:', error);
+    }
+  };
 
+  // Function to load allocation targets
+  const loadAllocationTargets = async () => {
+    try {
+      const response = await fetch('/api/financial-profile');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.profile) {
+          setAllocationTargets({
+            core: data.profile.coreTarget || 25,
+            growth: data.profile.growthTarget || 55,
+            hedge: data.profile.hedgeTarget || 10,
+            liquidity: data.profile.liquidityTarget || 10,
+            rebalanceThreshold: data.profile.rebalanceThreshold || 5,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load allocation targets:', error);
+    }
+  };
+
+  // Centralized refresh function
+  const refreshAllData = () => {
+    fetchHoldings();
+    fetchDynamicInsights();
     loadAllocationTargets();
+    loadYearlyData();
+  };
+
+  // Load all data on initial mount
+  useEffect(() => {
+    loadAllocationTargets();
+    loadYearlyData();
   }, []);
 
   // Category Processing - handles portfolio categorization with user targets
@@ -177,7 +207,11 @@ export default function PortfolioDashboard() {
               displayCurrency={displayCurrency}
               onCurrencyChange={setDisplayCurrency}
             />
-            <FinancialSetupButton />
+            <FinancialSetupButton 
+              onProfileUpdate={refreshAllData}
+              portfolioTotal={totalValue}
+              allocationTargets={allocationTargets}
+            />
           </div>
         </div>
         
@@ -190,7 +224,7 @@ export default function PortfolioDashboard() {
         />
 
         {/* Net Worth Tracker */}
-        <NetWorthTracker />
+        <NetWorthTracker yearlyData={yearlyData} />
 
         {/* Portfolio Allocation with Fixed Portfolio Grid */}
         <div className="mb-6">
@@ -200,12 +234,12 @@ export default function PortfolioDashboard() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-200">
-              Portfolio Allocation
+              Snapshot - No Allocation
             </h2>
             <div className="flex items-center gap-3">
               {/* Edit Targets Button */}
               <button
-                onClick={() => setIsAllocationEditorOpen(true)}
+                onClick={() => { /* This will be handled by FinancialSetupButton now */ }}
                 className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -225,6 +259,10 @@ export default function PortfolioDashboard() {
               )}
             </div>
           </div>
+          
+          <h3 className="text-lg font-medium text-gray-400 mb-2">
+            Holdings
+          </h3>
           
           {/* ADD APPLE RADIAL ALLOCATION CHART HERE */}
           <AppleRadialAllocation 
@@ -259,14 +297,6 @@ export default function PortfolioDashboard() {
         <TaxIntelligenceDisplay
           taxIntelligence={taxIntelligence || undefined}
           isLoading={insightsLoading}
-        />
-
-        {/* Allocation Target Editor Modal */}
-        <AllocationTargetEditor
-          isOpen={isAllocationEditorOpen}
-          onClose={() => setIsAllocationEditorOpen(false)}
-          currentTargets={allocationTargets}
-          onTargetsUpdate={handleAllocationTargetsUpdate}
         />
       </div>
     </div>

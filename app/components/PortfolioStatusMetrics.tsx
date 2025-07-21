@@ -66,16 +66,7 @@ export default function PortfolioStatusMetrics({
               {isLive && <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>}
             </div>
             <p className="text-sm text-gray-400">FI Progress</p>
-            {intelligence?.statusIntelligence?.urgentAction && (
-              <p className="text-xs text-orange-300 mt-1">
-                Next: {intelligence.statusIntelligence.urgentAction}
-              </p>
-            )}
-            {intelligence?.statusIntelligence?.deadline && (
-              <p className="text-xs text-red-300 mt-1">
-                Deadline: {intelligence.statusIntelligence.deadline}
-              </p>
-            )}
+            {/* Removed intelligence insights: urgentAction and deadline */}
           </div>
         </div>
 

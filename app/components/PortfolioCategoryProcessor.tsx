@@ -90,39 +90,37 @@ export function usePortfolioCategoryProcessor({
       // Determine status using custom rebalance threshold
       const threshold = targets.rebalanceThreshold;
       let status: 'perfect' | 'underweight' | 'excess';
-      let statusText: string;
+      let shortStatus: string;
+      let detailedStatus: string;
 
       if (Math.abs(gap) <= threshold) {
         status = 'perfect';
-        statusText = 'Perfect';
+        shortStatus = '✅ On Track';
+        detailedStatus = `At ${currentPercent.toFixed(1)}%, you are within your ${threshold}% threshold for your ${category.target}% target.`;
       } else if (gap < 0) {
         status = 'underweight';
-        // NEW: Completion-based status text
         const shortfall = 100 - completionPercent;
-        statusText = shortfall > 0 ? `${Math.round(shortfall)}% to go` : 'Perfect';
+        shortStatus = `${shortfall.toFixed(0)}% to goal`;
+        detailedStatus = `You are ${shortfall.toFixed(0)}% under your target. Consider adding $${Math.abs(gapAmount).toLocaleString(undefined, { maximumFractionDigits: 0 })} to reach your goal.`;
       } else {
         status = 'excess';
-        // NEW: Over-allocation status text
-        const overAmount = completionPercent - 100;
-        statusText = `${Math.round(overAmount)}% over`;
+        const overage = completionPercent - 100;
+        shortStatus = `${overage.toFixed(0)}% Over`;
+        detailedStatus = `You are ${overage.toFixed(0)}% over your target. Consider rebalancing $${gapAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })} to other categories.`;
       }
-
-      // Get intelligence callout if available
-      const allocationIntelligence = intelligence?.allocationIntelligence?.find(
-        intel => intel.name === category.name
-      );
       
       return {
         ...category,
         holdings: categoryHoldings,
         currentValue,
         currentPercent,
-        completionPercent, // NEW: Add completion percentage
+        completionPercent,
         gap,
         gapAmount,
         status,
-        statusText,
-        callout: allocationIntelligence?.callout
+        statusText: detailedStatus,
+        shortStatus,
+        callout: undefined, // Let's generate this locally
       };
     });
   }, [holdings, totalValue, displayCurrency, intelligence, customTargets]);
