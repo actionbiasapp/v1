@@ -70,7 +70,12 @@ const PortfolioCard = React.memo(({
       name: holding.name,
       amount: getHoldingDisplayValue(holding, holding.entryCurrency as CurrencyCode || 'SGD'),
       currency: (holding.entryCurrency as CurrencyCode) || 'SGD',
-      location: holding.location
+      location: holding.location,
+      assetType: holding.assetType || 'stock',
+      quantity: holding.quantity ?? undefined,
+      unitPrice: holding.unitPrice ?? undefined,
+      currentUnitPrice: holding.currentUnitPrice ?? undefined,
+      manualPricing: holding.priceSource === 'manual'
     });
     setEditingHolding(holding.id);
   }, []);
@@ -164,7 +169,7 @@ const PortfolioCard = React.memo(({
         </div>
         <div>
           <div className="card-value">
-            {formatCurrency(category.currentValue, displayCurrency, { compact: true })}
+            {formatCurrency(category.currentValue, displayCurrency, { compact: true, precision: 0 })}
           </div>
           <span className="expand-indicator">{isExpanded ? '▲' : '▼'}</span>
         </div>
@@ -188,8 +193,21 @@ const PortfolioCard = React.memo(({
         <div className="holdings-preview">
           {category.holdings.slice(0, 3).map((holding, index) => (
             <div key={holding.id || index} className="holding-item">
-              <span>{getAssetIcon(holding.symbol)} {holding.symbol}</span>
-              <span>{formatCurrency(getHoldingDisplayValue(holding, displayCurrency), displayCurrency, { compact: true })}</span>
+              <span>
+                {getAssetIcon(holding.symbol)} {holding.symbol}
+                {holding.priceSource !== 'manual' && (
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full ml-1 align-middle ${
+                    holding.priceUpdated && (new Date().getTime() - new Date(holding.priceUpdated).getTime() < 24 * 60 * 60 * 1000)
+                      ? 'bg-green-400'
+                      : 'bg-green-950'
+                  }`} style={{ boxShadow: '0 0 0 1px #222' }} title={
+                    holding.priceUpdated && (new Date().getTime() - new Date(holding.priceUpdated).getTime() < 24 * 60 * 60 * 1000)
+                      ? 'Auto-updated in last 24h'
+                      : 'Auto-updated (not in last 24h)'
+                  }></span>
+                )}
+              </span>
+              <span>{formatCurrency(getHoldingDisplayValue(holding, displayCurrency), displayCurrency, { compact: true, precision: 0 })}</span>
             </div>
           ))}
           {category.holdings.length > 3 && (
@@ -205,6 +223,7 @@ const PortfolioCard = React.memo(({
         <div className="expanded-content">
           {/* Add Holding Form */}
           {addingToCategory && (
+            <div onClick={e => e.stopPropagation()}>
             <HoldingForm 
               key={`add-${category.name}`}
               categoryName={category.name}
@@ -214,7 +233,27 @@ const PortfolioCard = React.memo(({
               onCancel={handleCancelForm}
               loading={loading}
             />
+            </div>
           )}
+
+          {/* Recommended Actions - moved here */}
+          <div className="mb-4">
+            {category.status === 'perfect' && (
+              <div className="text-green-400 text-sm">
+                ✅ Allocation is optimal. Hold steady and continue regular contributions.
+              </div>
+            )}
+            {category.status === 'underweight' && (
+              <div className="text-yellow-400 text-sm">
+                ⚠️ Add {formatCurrency(Math.abs(category.gapAmount), displayCurrency, { compact: true, precision: 0 })} to reach target
+              </div>
+            )}
+            {category.status === 'excess' && (
+              <div className="text-red-400 text-sm">
+                🔴 Trim {formatCurrency(Math.abs(category.gapAmount), displayCurrency, { compact: true, precision: 0 })} excess
+              </div>
+            )}
+          </div>
 
           {/* Add Holding Button */}
           {!addingToCategory && (
@@ -234,6 +273,7 @@ const PortfolioCard = React.memo(({
             {category.holdings.map((holding) => (
               <div key={holding.id}>
                 {editingHolding === holding.id ? (
+                  <div onClick={e => e.stopPropagation()}>
                   <HoldingForm 
                     key={`edit-${holding.id}`}
                     categoryName={category.name}
@@ -244,6 +284,7 @@ const PortfolioCard = React.memo(({
                     onCancel={handleCancelForm}
                     loading={loading}
                   />
+                  </div>
                 ) : (
                   <IndividualHoldingCard
                     holding={holding}
@@ -258,35 +299,7 @@ const PortfolioCard = React.memo(({
             ))}
           </div>
 
-          {/* Recommendations */}
-          <div className="recommendations">
-            <div className="recommendations-title">💡 Recommended Actions</div>
-            {category.status === 'perfect' && (
-              <div style={{ color: '#86efac', fontSize: '0.85rem' }}>
-                ✅ Allocation is optimal. Hold steady and continue regular contributions.
-              </div>
-            )}
-            {category.status === 'underweight' && (
-              <div>
-                <div style={{ color: '#fbbf24', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                  ⚠️ Add {formatCurrency(Math.abs(category.gapAmount), displayCurrency, { compact: true })} to reach target
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>
-                  Consider: DCA into {category.name.toLowerCase()} positions over next 2-3 months
-                </div>
-              </div>
-            )}
-            {category.status === 'excess' && (
-              <div>
-                <div style={{ color: '#f87171', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                  🔴 Trim {formatCurrency(Math.abs(category.gapAmount), displayCurrency, { compact: true })} excess
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem' }}>
-                  Consider: Gradual rebalancing into underweight categories
-                </div>
-              </div>
-            )}
-          </div>
+
         </div>
       )}
     </div>

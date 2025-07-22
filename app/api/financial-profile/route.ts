@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
   try {
     // Step 1: Update the user's main profile data
     if (profile) {
-      await prisma.user.update({
+        await prisma.user.update({
         where: { id: user.id },
         data: {
           primaryCurrency: profile.incomeCurrency,
@@ -78,21 +78,21 @@ export async function POST(request: NextRequest) {
       const existingYears = new Set(existingRecords.map(r => r.year));
       
       const yearsToDelete = [...existingYears].filter(year => !incomingYears.has(year));
-
+      
       if (yearsToDelete.length > 0) {
         await prisma.yearlyData.deleteMany({
           where: {
             userId: user.id,
             year: { in: yearsToDelete }
+              }
+            });
           }
-        });
-      }
-
+          
       // Step 3: Upsert (update or insert) the remaining yearly data
       for (const yd of yearlyData) {
         await prisma.yearlyData.upsert({
           where: { userId_year: { userId: user.id, year: yd.year } },
-          update: {
+              update: { 
             netWorth: yd.netWorth ?? 0,
             income: yd.income ?? 0,
             expenses: yd.expenses ?? 0,
@@ -101,8 +101,8 @@ export async function POST(request: NextRequest) {
             marketGains: yd.marketGains ?? 0,
             returnPercent: yd.returnPercent ?? 0,
             notes: yd.notes || null
-          },
-          create: {
+              },
+              create: { 
             userId: user.id,
             year: yd.year,
             netWorth: yd.netWorth ?? 0,
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
         });
       }
     }
-
+    
     return NextResponse.json({ success: true });
   } catch (e) {
     return NextResponse.json({ success: false, error: (e as Error).message }, { status: 400 });

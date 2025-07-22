@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { YearlyIncomeExpense } from '@/app/lib/types/financial';
+import ActionButtons from '../ui/ActionButtons';
 
 const formatNumberWithCommas = (value: number | string): string => {
   if (!value && value !== 0) return '';
@@ -114,28 +115,12 @@ export function FinancialDataManager({
                         {data.savingsRate.toFixed(1)}%
                       </td>
                       <td className="py-3 px-4">
-                        <div className="flex gap-2 justify-center">
-                          <button
-                            onClick={() => setEditingYear(data.year)}
-                            className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                            title="Edit"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M12 20h9"/>
-                              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => onDelete(data.year)}
-                            className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                            title="Delete"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M3 6h18"/>
-                              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
-                              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-                            </svg>
-                          </button>
+                        <div className="flex justify-center">
+                          <ActionButtons
+                            onEdit={() => setEditingYear(data.year)}
+                            onDelete={() => onDelete(data.year)}
+                            size="sm"
+                          />
                         </div>
                       </td>
                     </tr>

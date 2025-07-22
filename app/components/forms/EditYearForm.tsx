@@ -6,7 +6,7 @@ interface EditYearFormProps {
   yearlyData: any[];
   editingYear: number;
   onEdit: (year: number, netWorth: number, savings: number) => void;
-  onCancel: () => void;
+  onCancel: () => void; 
 }
 
 interface EditFormData {

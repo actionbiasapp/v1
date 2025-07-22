@@ -33,6 +33,7 @@ const HoldingForm = React.memo(({
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [weightedAverage, setWeightedAverage] = useState<WeightedAverageResult | null>(null);
   const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
+  const [lastChanged, setLastChanged] = useState<'quantity' | 'unitPrice' | 'amount' | null>(null);
 
   // Stable event handlers
   const handleSymbolChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,29 +43,29 @@ const HoldingForm = React.memo(({
     if (debounceTimeout.current) {
       clearTimeout(debounceTimeout.current);
     }
-
+    
     if (symbol.length >= 2) {
       setPriceDetectionLoading(true);
       debounceTimeout.current = setTimeout(async () => {
-        try {
-          const response = await fetch('/api/prices/detect', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+      try {
+        const response = await fetch('/api/prices/detect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ symbol, assetType: formData.assetType })
-          });
-          const detection = await response.json();
-          setPriceDetection(detection);
-
+        });
+        const detection = await response.json();
+        setPriceDetection(detection);
+        
           // Always update company name when a new one is detected
           if (detection.companyName) {
-            onFormDataChange({ ...formData, symbol, name: detection.companyName });
+          onFormDataChange({ ...formData, symbol, name: detection.companyName });
           }
         } catch (error) {
-          console.error('Price detection failed:', error);
-          setPriceDetection(null);
-        } finally {
-          setPriceDetectionLoading(false);
-        }
+        console.error('Price detection failed:', error);
+        setPriceDetection(null);
+      } finally {
+        setPriceDetectionLoading(false);
+      }
       }, 400); // 400ms debounce
     } else {
       setPriceDetection(null);
@@ -220,12 +221,94 @@ const HoldingForm = React.memo(({
               style={inputStyle}
             />
           </div>
+
+          {/* New: Quantity and Unit Price fields with auto-calc logic */}
+          <div style={gridStyle}>
+            <input
+              type="number"
+              placeholder="Quantity"
+              value={formData.quantity ?? ''}
+              onChange={e => {
+                let quantity = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                setLastChanged('quantity');
+                let unitPrice = formData.unitPrice;
+                let amount = formData.amount;
+                if (quantity !== undefined && unitPrice !== undefined) {
+                  amount = parseFloat((unitPrice * quantity).toFixed(2));
+                } else if (quantity !== undefined && amount !== undefined && lastChanged !== 'unitPrice') {
+                  unitPrice = parseFloat((amount / quantity).toFixed(4));
+                }
+                onFormDataChange({ ...formData, quantity, unitPrice, amount });
+              }}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
+              autoComplete="off"
+              disabled={loading}
+              style={inputStyle}
+              onWheel={e => e.currentTarget.blur()}
+            />
+            <input
+              type="number"
+              placeholder={`Unit Price (${formData.currency})`}
+              value={formData.unitPrice ?? ''}
+              onChange={e => {
+                let unitPrice = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                setLastChanged('unitPrice');
+                let quantity = formData.quantity;
+                let amount = formData.amount;
+                if (unitPrice !== undefined && quantity !== undefined) {
+                  amount = parseFloat((unitPrice * quantity).toFixed(2));
+                } else if (unitPrice !== undefined && amount !== undefined && lastChanged !== 'quantity') {
+                  quantity = parseFloat((amount / unitPrice).toFixed(4));
+                }
+                onFormDataChange({ ...formData, unitPrice, quantity, amount });
+              }}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
+              autoComplete="off"
+              disabled={loading}
+              style={inputStyle}
+              onWheel={e => e.currentTarget.blur()}
+            />
+          </div>
           
+          {/* Manual price override option */}
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="checkbox"
+              id="manualPricing"
+              checked={formData.manualPricing || false}
+              onChange={e => onFormDataChange({ ...formData, manualPricing: e.target.checked })}
+              className="w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500"
+            />
+            <label htmlFor="manualPricing" className="text-sm text-slate-300">
+              Manual pricing (disable API updates)
+            </label>
+          </div>
+
+          {/* Manual current price input */}
+          {formData.manualPricing && (
+            <div style={gridStyle}>
+                          <input
+              type="number"
+              placeholder={`Current Price (${formData.currency})`}
+              value={formData.currentUnitPrice ?? ''}
+              onChange={e => {
+                const currentUnitPrice = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                onFormDataChange({ ...formData, currentUnitPrice });
+              }}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
+              autoComplete="off"
+              disabled={loading}
+              style={inputStyle}
+              onWheel={e => e.currentTarget.blur()}
+            />
+            </div>
+          )}
+
           {/* Price detection indicator */}
-          {priceDetectionLoading && (
+          {!formData.manualPricing && priceDetectionLoading && (
             <div className="text-xs text-blue-400">🔍 Checking pricing...</div>
           )}
-          {priceDetection && !priceDetectionLoading && (
+          {!formData.manualPricing && priceDetection && !priceDetectionLoading && (
             <div className="text-xs">
               {priceDetection.supportsAutoPricing ? (
                 <span className="text-green-400">
@@ -243,7 +326,18 @@ const HoldingForm = React.memo(({
             <CurrencySelector
               value={formData.amount}
               currency={formData.currency}
-              onValueChange={handleAmountChange}
+              onValueChange={val => {
+                setLastChanged('amount');
+                let amount = val;
+                let quantity = formData.quantity;
+                let unitPriceLocal = formData.unitPrice;
+                if (amount !== undefined && quantity !== undefined && lastChanged !== 'unitPrice') {
+                  unitPriceLocal = quantity ? parseFloat((amount / quantity).toFixed(4)) : undefined;
+                } else if (amount !== undefined && unitPriceLocal !== undefined && lastChanged !== 'quantity') {
+                  quantity = unitPriceLocal ? parseFloat((amount / unitPriceLocal).toFixed(4)) : undefined;
+                }
+                onFormDataChange({ ...formData, amount, quantity, unitPrice: unitPriceLocal });
+              }}
               onCurrencyChange={handleCurrencyChange}
               label="Amount"
               disabled={loading}

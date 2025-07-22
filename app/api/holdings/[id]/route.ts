@@ -37,6 +37,8 @@ export async function GET(
         category: holding.category.name,
         location: holding.location,
         quantity: holding.quantity ? Number(holding.quantity) : null,
+        unitPrice: holding.unitPrice ? Number(holding.unitPrice) : null,
+        assetType: holding.assetType || null,
         costBasis: holding.costBasis ? Number(holding.costBasis) : null,
         updatedAt: holding.updatedAt.toISOString()
       }
@@ -68,7 +70,11 @@ export async function PUT(
       entryCurrency = 'SGD',
       location,
       costBasis,
-      quantity
+      quantity,
+      unitPrice,
+      currentUnitPrice,
+      manualPricing,
+      assetType
     } = body;
 
     if (!symbol || !name) {
@@ -115,6 +121,10 @@ export async function PUT(
         location,
         costBasis: costBasis || null,
         quantity: quantity || null,
+        unitPrice: unitPrice || null,
+        currentUnitPrice: currentUnitPrice || null,
+        priceSource: manualPricing ? 'manual' : null,
+        assetType: assetType || null,
         updatedAt: new Date()
       },
       include: { category: true }
@@ -135,6 +145,8 @@ export async function PUT(
         category: updatedHolding.category.name,
         location: updatedHolding.location,
         quantity: updatedHolding.quantity ? Number(updatedHolding.quantity) : null,
+        unitPrice: updatedHolding.unitPrice ? Number(updatedHolding.unitPrice) : null,
+        assetType: updatedHolding.assetType || null,
         costBasis: updatedHolding.costBasis ? Number(updatedHolding.costBasis) : null,
         updatedAt: updatedHolding.updatedAt.toISOString()
       }

@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 interface AddYearFormProps {
   onAdd: (year: number, netWorth: number, savings: number) => void;
-  onCancel: () => void;
+  onCancel: () => void; 
 }
 
 interface EditFormData {

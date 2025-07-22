@@ -73,40 +73,96 @@ class DynamicPriceService {
 
   async updatePriceForSymbol(symbol: string) {
     const source = this.detectPriceSource(symbol);
-    
+    let failReason = '';
     if (source === 'manual') {
       return { symbol, price: null, source: 'manual', action: 'skipped' };
     }
 
     let price: number | null = null;
-    let finalSource: PriceSource = source; // ✅ FIXED: Explicitly typed to allow 'yesterday'
+    let finalSource: PriceSource = source;
     
+    try {
     if (source === 'fmp') {
       price = await this.fetchFMPPrice(symbol);
+        if (price === null) failReason = 'FMP API returned null';
     } else if (source === 'alpha') {
       price = await this.fetchAlphaPrice(symbol);
+        if (price === null) failReason = 'Alpha Vantage API returned null';
     } else if (source === 'coingecko') {
       price = await this.fetchCryptoPrice(symbol);
+        if (price === null) failReason = 'CoinGecko API returned null';
+      }
+    } catch (error) {
+      failReason = error instanceof Error ? error.message : 'Unknown error';
     }
 
     if (price === null) {
       price = await this.getYesterdayPrice(symbol);
       if (price !== null) {
-        finalSource = 'yesterday'; // ✅ FIXED: Now TypeScript allows this assignment
+        finalSource = 'yesterday';
+      } else {
+        failReason = failReason || 'No price found (API and yesterday)';
       }
     }
 
     if (price !== null && finalSource !== 'yesterday') {
       try {
-        await prisma.holdings.updateMany({
-          where: { symbol },
-          data: {
-            currentUnitPrice: price,
-            priceUpdated: new Date(),
-            priceSource: finalSource
-          }
+        // Fetch the latest USD->SGD rate
+        let usdToSgdRate = 1;
+        const rateRow = await prisma.exchangeRate.findFirst({
+          where: {
+            fromCurrency: { equals: 'USD', mode: 'insensitive' },
+            toCurrency: { equals: 'SGD', mode: 'insensitive' },
+            isActive: true
+          },
+          orderBy: { updatedAt: 'desc' }
         });
+        if (rateRow && rateRow.rate) {
+          usdToSgdRate = Number(rateRow.rate);
+        }
+        // Get all holdings for this symbol
+        const holdingsToUpdate = await prisma.holdings.findMany({
+          where: { symbol: { equals: symbol, mode: 'insensitive' } }
+        });
+        for (const holding of holdingsToUpdate) {
+          // Skip holdings with manual pricing
+          if (holding.priceSource === 'manual') {
+            continue;
+          }
+          let valueSGD = 0;
+          let currentUnitPrice = price;
+          const qty = holding.quantity ? Number(holding.quantity) : 0;
+          
+          // Handle crypto prices (CoinGecko returns USD prices)
+          if (finalSource === 'coingecko' || source === 'coingecko') {
+            if (holding.entryCurrency === 'SGD') {
+              // Convert USD price to SGD for storage
+              currentUnitPrice = price * usdToSgdRate;
+              valueSGD = currentUnitPrice * qty;
+            } else {
+              // Keep USD price if entryCurrency is USD
+              valueSGD = price * qty * usdToSgdRate;
+            }
+          } else if (holding.entryCurrency === 'SGD') {
+            valueSGD = price * qty;
+          } else if (holding.entryCurrency === 'USD') {
+            valueSGD = price * qty * usdToSgdRate;
+          } else {
+            valueSGD = price * qty; // fallback
+          }
+          
+          await prisma.holdings.update({
+            where: { id: holding.id },
+            data: {
+              currentUnitPrice: currentUnitPrice,
+              priceUpdated: new Date(),
+              priceSource: finalSource,
+              valueSGD
+            }
+          });
+        }
       } catch (error) {
+        failReason = error instanceof Error ? error.message : 'DB update error';
         console.error(`Database update error for ${symbol}:`, error);
       }
     }
@@ -115,7 +171,8 @@ class DynamicPriceService {
       symbol, 
       price, 
       source: finalSource, 
-      action: price !== null ? (finalSource === 'yesterday' ? 'used_yesterday' : 'updated') : 'failed'
+      action: price !== null ? (finalSource === 'yesterday' ? 'used_yesterday' : 'updated') : 'failed',
+      failReason: price === null || failReason ? failReason : undefined
     };
   }
 }
@@ -176,7 +233,8 @@ export async function POST(req: NextRequest) {
       total: symbols.length
     };
     
-    const successMessage = `Successfully updated ${summary.updated}/${summary.total} symbols. Used yesterday's price for ${summary.yesterday}. Failed: ${summary.failed}.`;
+    const failedDetails = results.filter(r => r.action === 'failed').map(r => `${r.symbol}: ${r.failReason}`).join('; ');
+    const successMessage = `Successfully updated ${summary.updated}/${summary.total} symbols. Used yesterday's price for ${summary.yesterday}. Failed: ${summary.failed}. ${failedDetails ? 'Failures: ' + failedDetails : ''}`;
 
     // 2. Update log to SUCCESS
     await prisma.cronJobLog.update({

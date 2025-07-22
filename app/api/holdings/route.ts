@@ -27,11 +27,12 @@ export async function GET() {
       category: holding.category.name,
       location: holding.location,
       quantity: holding.quantity ? Number(holding.quantity) : null,
+      unitPrice: holding.unitPrice ? Number(holding.unitPrice) : null,
+      assetType: holding.assetType || null,
       costBasis: holding.costBasis ? Number(holding.costBasis) : null,
       
       // NEW: Daily price fields
       currentUnitPrice: holding.currentUnitPrice ? Number(holding.currentUnitPrice) : null,
-      unitPrice: holding.unitPrice ? Number(holding.unitPrice) : null,
       priceUpdated: holding.priceUpdated,
       priceSource: holding.priceSource,
     }));
@@ -60,6 +61,10 @@ export async function POST(request: NextRequest) {
       location,
       costBasis,
       quantity,
+      unitPrice,
+      currentUnitPrice,
+      manualPricing,
+      assetType,
       userId = 'default-user' // Temporary default user for testing
     } = body;
 
@@ -140,7 +145,11 @@ export async function POST(request: NextRequest) {
         categoryId: categoryRecord.id,
         userId: user.id,
         costBasis: costBasis || null,
-        quantity: quantity || null
+        quantity: quantity || null,
+        unitPrice: unitPrice || null,
+        currentUnitPrice: currentUnitPrice || null,
+        priceSource: manualPricing ? 'manual' : null,
+        assetType: assetType || null
       },
       include: {
         category: true
@@ -161,6 +170,8 @@ export async function POST(request: NextRequest) {
       category: newHolding.category.name,
       location: newHolding.location,
       quantity: newHolding.quantity ? Number(newHolding.quantity) : null,
+      unitPrice: newHolding.unitPrice ? Number(newHolding.unitPrice) : null,
+      assetType: newHolding.assetType || null,
       costBasis: newHolding.costBasis ? Number(newHolding.costBasis) : null
     };
 

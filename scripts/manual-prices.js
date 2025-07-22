@@ -10,13 +10,13 @@ const manualPriceUpdates = [
   // India Holdings (INR prices from your spreadsheet)
   {
     symbol: 'SETNIF50',
-    currentUnitPrice: 338.15,     // INR per unit (current market price)
+    currentUnitPrice: 267.07,     // INR per unit (current market price)
     priceSource: 'manual',
     note: 'India ETF - manual update from spreadsheet'
   },
   {
     symbol: 'SETFNN50', 
-    currentUnitPrice: 920.23,     // INR per unit (current market price)
+    currentUnitPrice: 723.73,     // INR per unit (current market price)
     priceSource: 'manual',
     note: 'India ETF - manual update from spreadsheet'
   },

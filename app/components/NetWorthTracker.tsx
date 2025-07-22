@@ -20,7 +20,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     return (
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 text-sm">
         <p className="font-bold text-white mb-2">{label}</p>
-        <p className="text-blue-400">Net Worth: ${data.netWorth.toLocaleString()}</p>
+        <p className="text-blue-400">Net Worth: ${data.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
         <p className="text-emerald-400">Market Gains: ${data.marketGains.toLocaleString()}</p>
         <p className="text-indigo-400">Savings: ${data.savings.toLocaleString()}</p>
       </div>
@@ -29,21 +29,29 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export default function NetWorthTracker({ yearlyData }: { yearlyData: YearlyData[] }) {
+export default function NetWorthTracker({ yearlyData, portfolioTotal }: { yearlyData: YearlyData[], portfolioTotal?: number }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const processedData = calculateFinancialMetrics(yearlyData);
+  // Always use live portfolio value for current year's net worth
+  const currentYear = new Date().getFullYear();
+  const updatedYearlyData = yearlyData.map((y) =>
+    y.year === currentYear && portfolioTotal
+      ? { ...y, netWorth: portfolioTotal }
+      : y
+  );
+
+  const processedData = calculateFinancialMetrics(updatedYearlyData);
 
   if (loading) {
     return <div className="text-center text-slate-400 py-8">Loading yearly data...</div>;
-  }
+    }
   if (error) {
     return <div className="text-center text-red-400 py-8">{error}</div>;
   }
   
-  const chartData = yearlyData.map((data, index) => {
-    const previousNetWorth = index > 0 ? yearlyData[index - 1].netWorth : 0;
+  const chartData = updatedYearlyData.map((data, index) => {
+    const previousNetWorth = index > 0 ? updatedYearlyData[index - 1].netWorth : 0;
     return {
       ...data,
       previousNetWorth: previousNetWorth,
@@ -67,7 +75,7 @@ export default function NetWorthTracker({ yearlyData }: { yearlyData: YearlyData
       <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={processedData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-            <defs>
+          <defs>
               <linearGradient id="colorNetWorth" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.8}/>
                 <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
@@ -79,8 +87,8 @@ export default function NetWorthTracker({ yearlyData }: { yearlyData: YearlyData
               <linearGradient id="colorSavings" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
                 <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
+            </linearGradient>
+          </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
             <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} />
             <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(value) => `$${(value / 1000)}k`} />

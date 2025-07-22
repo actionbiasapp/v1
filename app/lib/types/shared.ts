@@ -14,6 +14,7 @@ export interface Holding {
   location: string;
   quantity?: number;
   unitPrice?: number;
+  currentUnitPrice?: number;
   _confirmedQuantity?: number;
   _confirmedUnitPrice?: number;
   _confirmedTotalCost?: number;
@@ -24,6 +25,8 @@ export interface Holding {
   value?: number;
   currentValue?: number;
   assetType?: 'stock' | 'crypto' | 'manual'; // NEW
+  priceSource?: string;
+  priceUpdated?: string;
 }
 
 // UNIFIED ACTION ITEM INTERFACE
@@ -109,6 +112,8 @@ export interface HoldingFormData {
   location: string;
   quantity?: number;
   unitPrice?: number;
+  currentUnitPrice?: number; // NEW: Manual current price override
+  manualPricing?: boolean; // NEW: Disable API updates
   _confirmedQuantity?: number;
   _confirmedUnitPrice?: number;
   _confirmedTotalCost?: number;

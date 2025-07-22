@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { FinancialProfile, createDefaultFinancialProfile, YearlyData } from '@/app/lib/types/shared';
 import { calculateFinancialMetrics } from '@/app/lib/financialUtils';
 import FinancialJourneyChart from './FinancialJourneyChart';
+import ActionButtons from '../ui/ActionButtons';
 
 interface FinancialSetupModalProps {
   isOpen: boolean;
@@ -91,6 +92,16 @@ export default function FinancialSetupModal({
     return calculateFinancialMetrics(yearlyData);
   }, [yearlyData]);
 
+  // Always use live portfolio value for current year's net worth
+  const currentYear = new Date().getFullYear();
+  const updatedYearlyData = useMemo(() => {
+    return processedYearlyData.map((y) =>
+      y.year === currentYear && portfolioTotal
+        ? { ...y, netWorth: portfolioTotal }
+        : y
+    );
+  }, [processedYearlyData, portfolioTotal]);
+
   const loadProfile = async () => {
     try {
       const response = await fetch('/api/financial-profile');
@@ -141,7 +152,7 @@ export default function FinancialSetupModal({
       onClose();
     }
   };
-  
+
   const saveProfile = async () => {
     setLoading(true);
     try {
@@ -157,7 +168,7 @@ export default function FinancialSetupModal({
 
       const saveData = {
         profile,
-        yearlyData: processedYearlyData // Use processed data with calculated gains
+        yearlyData: updatedYearlyData // Use processed data with calculated gains
       };
 
       const response = await fetch('/api/financial-profile', {
@@ -190,7 +201,7 @@ export default function FinancialSetupModal({
 
   const computeProfileFromUnifiedData = (): FinancialProfile => {
     const currentYear = new Date().getFullYear();
-    const currentYearData = processedYearlyData.find(y => y.year === currentYear);
+    const currentYearData = updatedYearlyData.find(y => y.year === currentYear);
     
     return {
       annualIncome: currentYearData?.income || 0,
@@ -213,7 +224,7 @@ export default function FinancialSetupModal({
 
   const calculateCompleteness = (): number => {
     const currentYear = new Date().getFullYear();
-    const currentYearData = processedYearlyData.find(y => y.year === currentYear);
+    const currentYearData = updatedYearlyData.find(y => y.year === currentYear);
     
     let completed = 0;
     const fields = [
@@ -233,7 +244,7 @@ export default function FinancialSetupModal({
 
   const getSmartDefaults = (): YearlyData => {
     const currentYear = new Date().getFullYear();
-    const sortedYears = processedYearlyData.sort((a, b) => b.year - a.year);
+    const sortedYears = updatedYearlyData.sort((a, b) => b.year - a.year);
     const latestYear = sortedYears[0];
     
     // For the current year, auto-populate net worth from portfolio total
@@ -280,14 +291,13 @@ export default function FinancialSetupModal({
   if (!isOpen) return null;
 
   const tabs = ['📊 Profile Overview', '📅 Manage Years', '🎯 FI Planning'];
-  const currentYear = new Date().getFullYear();
-  const currentYearData = processedYearlyData.find(y => y.year === currentYear);
+  const currentYearData = updatedYearlyData.find(y => y.year === currentYear);
   const currentNetWorth = currentYearData?.netWorth || 0;
   const fiProgress = (currentNetWorth / fiData.goal) * 100;
   const srsProgress = ((currentYearData?.srsContributions || 0) / (userProfile.srsLimit || 1)) * 100;
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={handleClose}>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={handleClose} style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
       <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
@@ -312,23 +322,31 @@ export default function FinancialSetupModal({
           ))}
         </div>
 
-        {/* Mobile Dropdown */}
+        {/* Mobile Swipe Navigation */}
         <div className="sm:hidden p-2 border-b border-slate-700">
-          <select
-            value={activeTab}
-            onChange={(e) => setActiveTab(Number(e.target.value))}
-            className="w-full bg-slate-700 text-white p-2 rounded-md border border-slate-600"
-          >
-            {tabs.map((tab, index) => (
-              <option key={index} value={index}>{tab}</option>
-            ))}
-          </select>
+          <div className="flex justify-between items-center">
+            <button
+              onClick={() => setActiveTab(Math.max(0, activeTab - 1))}
+              disabled={activeTab === 0}
+              className="p-2 text-slate-400 hover:text-white disabled:opacity-50"
+            >
+              ←
+            </button>
+            <span className="text-white font-medium">{tabs[activeTab]}</span>
+            <button
+              onClick={() => setActiveTab(Math.min(tabs.length - 1, activeTab + 1))}
+              disabled={activeTab === tabs.length - 1}
+              className="p-2 text-slate-400 hover:text-white disabled:opacity-50"
+            >
+              →
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {activeTab === 0 && (
             <ProfileOverviewTab 
-              yearlyData={processedYearlyData}
+              yearlyData={updatedYearlyData}
               fiData={fiData}
               userProfile={userProfile}
               fiProgress={fiProgress}
@@ -339,7 +357,7 @@ export default function FinancialSetupModal({
           
           {activeTab === 1 && (
             <ManageYearsTab
-              yearlyData={processedYearlyData}
+              yearlyData={updatedYearlyData}
               showAddYear={showAddYear}
               setShowAddYear={setShowAddYear}
               editingYear={editingYear}
@@ -357,7 +375,7 @@ export default function FinancialSetupModal({
               setFiData={setFiData}
               userProfile={userProfile}
               setUserProfile={setUserProfile}
-              yearlyData={processedYearlyData}
+              yearlyData={updatedYearlyData}
               allocationTargets={allocationTargets}
               setAllocationTargets={setAllocationTargets}
             />
@@ -504,7 +522,7 @@ function ManageYearsTab({
     if (sortConfig.key !== key) return null;
     return sortConfig.direction === 'ascending' ? ' ▲' : ' ▼';
   };
-
+  
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
@@ -523,41 +541,34 @@ function ManageYearsTab({
           <table className="hidden sm:table w-full text-sm">
             <thead>
               <tr className="border-b border-slate-700">
-                <th className="text-left py-3 px-4 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('year')}>Year{getSortIndicator('year')}</th>
-                <th className="text-right py-3 px-4 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('income')}>Income{getSortIndicator('income')}</th>
-                <th className="text-right py-3 px-4 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('expenses')}>Expenses{getSortIndicator('expenses')}</th>
-                <th className="text-right py-3 px-4 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('savings')}>Savings{getSortIndicator('savings')}</th>
-                <th className="text-right py-3 px-4 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('marketGains')}>Gains{getSortIndicator('marketGains')}</th>
-                <th className="text-right py-3 px-4 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('netWorth')}>Net Worth{getSortIndicator('netWorth')}</th>
-                <th className="text-center py-3 px-4 font-medium text-slate-400">Actions</th>
+                <th className="text-left py-3 px-6 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('year')}>Year{getSortIndicator('year')}</th>
+                <th className="text-right py-3 px-6 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('income')}>Income{getSortIndicator('income')}</th>
+                <th className="text-right py-3 px-6 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('expenses')}>Expenses{getSortIndicator('expenses')}</th>
+                <th className="text-right py-3 px-6 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('savings')}>Savings{getSortIndicator('savings')}</th>
+                <th className="text-right py-3 px-6 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('marketGains')}>Gains{getSortIndicator('marketGains')}</th>
+                <th className="text-right py-3 px-6 font-medium text-slate-400 cursor-pointer" onClick={() => requestSort('netWorth')}>Net Worth{getSortIndicator('netWorth')}</th>
+                <th className="text-center py-3 px-6 font-medium text-slate-400">Actions</th>
               </tr>
             </thead>
             <tbody>
               {sortedYearlyData.map((year) => (
                 <tr key={year.year} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
-                  <td className="py-3 px-4 font-medium text-white">{year.year}</td>
-                  <td className="py-3 px-4 text-right text-cyan-400">S${(year.income ?? 0).toLocaleString()}</td>
-                  <td className="py-3 px-4 text-right text-red-400">S${(year.expenses ?? 0).toLocaleString()}</td>
-                  <td className="py-3 px-4 text-right text-indigo-400">
+                  <td className="py-3 px-6 font-medium text-white">{year.year}</td>
+                  <td className="py-3 px-6 text-right text-cyan-400">S${(year.income ?? 0).toLocaleString()}</td>
+                  <td className="py-3 px-6 text-right text-red-400">S${(year.expenses ?? 0).toLocaleString()}</td>
+                  <td className="py-3 px-6 text-right text-indigo-400">
                     S${(year.savings ?? 0).toLocaleString()} <span className="text-xs text-slate-400">({(year.savingsRate ?? 0).toFixed(0)}%)</span>
                   </td>
-                  <td className={`py-3 px-4 text-right ${(year.marketGains ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  <td className={`py-3 px-6 text-right ${(year.marketGains ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {(year.marketGains ?? 0) >= 0 ? '+' : ''}S${(year.marketGains ?? 0).toLocaleString()} <span className="text-xs text-slate-400">({(year.returnPercent ?? 0).toFixed(1)}%)</span>
                   </td>
-                  <td className="py-3 px-4 text-right text-white">S${(year.netWorth ?? 0).toLocaleString()}</td>
-                  <td className="py-3 px-4 text-center">
-                    <button
-                      onClick={() => setEditingYear(year)}
-                      className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 mr-2"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => deleteYear(year.year)}
-                      className="text-xs px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                    >
-                      Delete
-                    </button>
+                  <td className="py-3 px-6 text-right text-white">S${(year.netWorth ?? 0).toLocaleString()}</td>
+                  <td className="py-3 px-6 text-center">
+                    <ActionButtons
+                      onEdit={() => setEditingYear(year)}
+                      onDelete={() => deleteYear(year.year)}
+                      size="sm"
+                    />
                   </td>
                 </tr>
               ))}
@@ -570,21 +581,12 @@ function ManageYearsTab({
               <div key={year.year} className="bg-slate-700/40 rounded-lg p-4">
                 <div className="flex justify-between items-center mb-3">
                   <div className="font-bold text-lg text-white">{year.year}</div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setEditingYear(year)}
-                      className="text-xs px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => deleteYear(year.year)}
-                      className="text-xs px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
+                <ActionButtons
+                  onEdit={() => setEditingYear(year)}
+                  onDelete={() => deleteYear(year.year)}
+                  size="md"
+                />
+              </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div className="text-slate-400">Income</div>
                   <div className="text-right text-cyan-400">S${(year.income ?? 0).toLocaleString()}</div>
@@ -593,16 +595,16 @@ function ManageYearsTab({
                   <div className="text-slate-400">Savings</div>
                   <div className="text-right text-indigo-400">
                     S${(year.savings ?? 0).toLocaleString()} <span className="text-xs text-slate-500">({(year.savingsRate ?? 0).toFixed(0)}%)</span>
-                  </div>
+                </div>
                   <div className="text-slate-400">Gains</div>
                   <div className={`text-right ${(year.marketGains ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                     {(year.marketGains ?? 0) >= 0 ? '+' : ''}S${(year.marketGains ?? 0).toLocaleString()} <span className="text-xs text-slate-500">({(year.returnPercent ?? 0).toFixed(1)}%)</span>
-                  </div>
+                </div>
                   <div className="text-slate-400 font-semibold">Net Worth</div>
                   <div className="text-right text-white font-semibold">S${(year.netWorth ?? 0).toLocaleString()}</div>
-                </div>
               </div>
-            ))}
+            </div>
+          ))}
           </div>
 
         </div>
@@ -829,7 +831,7 @@ function YearEditModal({ yearData, onSave, onClose, isEditing, existingYears, ge
     }
     handleChange(e);
   };
-  
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     

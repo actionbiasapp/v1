@@ -41,6 +41,9 @@ export default function PortfolioDashboard() {
   const [allocationTargets, setAllocationTargets] = useState(DEFAULT_TARGETS);
   const [showChartView, setShowChartView] = useState(false);
   const [yearlyData, setYearlyData] = useState<any[]>([]); // State for yearly data
+  const [refreshingPrices, setRefreshingPrices] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [usdToSgd, setUsdToSgd] = useState(1.35);
 
   // Portfolio Data Hook - handles all API integration
   const {
@@ -74,11 +77,11 @@ export default function PortfolioDashboard() {
   };
 
   // Function to load allocation targets
-  const loadAllocationTargets = async () => {
-    try {
-      const response = await fetch('/api/financial-profile');
-      if (response.ok) {
-        const data = await response.json();
+    const loadAllocationTargets = async () => {
+      try {
+        const response = await fetch('/api/financial-profile');
+        if (response.ok) {
+          const data = await response.json();
         if (data.success && data.profile) {
           setAllocationTargets({
             core: data.profile.coreTarget || 25,
@@ -87,12 +90,12 @@ export default function PortfolioDashboard() {
             liquidity: data.profile.liquidityTarget || 10,
             rebalanceThreshold: data.profile.rebalanceThreshold || 5,
           });
+          }
         }
+      } catch (error) {
+        console.error('Failed to load allocation targets:', error);
       }
-    } catch (error) {
-      console.error('Failed to load allocation targets:', error);
-    }
-  };
+    };
 
   // Centralized refresh function
   const refreshAllData = () => {
@@ -104,14 +107,85 @@ export default function PortfolioDashboard() {
 
   // Load all data on initial mount
   useEffect(() => {
+    fetchHoldings();
     loadAllocationTargets();
     loadYearlyData();
   }, []);
 
+  useEffect(() => {
+    async function fetchRate() {
+      try {
+        const res = await fetch('/api/exchange-rates');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.rates && data.rates.USD_TO_SGD) setUsdToSgd(Number(data.rates.USD_TO_SGD));
+        }
+      } catch {}
+    }
+    fetchRate();
+  }, []);
+
+  // Calculate total value in selected display currency
+  const totalValue = holdings.reduce((sum, holding) => {
+    let currencyValue = 0;
+    
+    // Always calculate dynamically using currentPrice × quantity when available
+    if (holding.quantity && (holding as any).currentUnitPrice) {
+      const quantity = holding.quantity;
+      const currentPrice = (holding as any).currentUnitPrice;
+      const entryCurrency = holding.entryCurrency as CurrencyCode;
+      
+      // Calculate the total value in the entry currency
+      const totalValueInEntryCurrency = quantity * currentPrice;
+      
+      // Convert to display currency if needed
+      if (entryCurrency === displayCurrency) {
+        // Same currency, no conversion needed
+        currencyValue = totalValueInEntryCurrency;
+      } else if (usdToSgd) {
+        // Convert from entry currency to display currency
+        try {
+          if (entryCurrency === 'USD' && displayCurrency === 'SGD') {
+            currencyValue = totalValueInEntryCurrency * usdToSgd;
+          } else if (entryCurrency === 'SGD' && displayCurrency === 'USD') {
+            currencyValue = totalValueInEntryCurrency / usdToSgd;
+          } else if (entryCurrency === 'INR' && displayCurrency === 'SGD') {
+            currencyValue = totalValueInEntryCurrency * 0.0148337; // INR_TO_SGD rate
+          } else if (entryCurrency === 'SGD' && displayCurrency === 'INR') {
+            currencyValue = totalValueInEntryCurrency / 0.0148337;
+          } else {
+            // Fallback to stored values for other conversions
+            currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
+                           displayCurrency === 'USD' ? holding.valueUSD :
+                           holding.valueINR;
+          }
+        } catch (error) {
+          console.error('Currency conversion error:', error);
+          // Fallback to stored values
+          currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
+                         displayCurrency === 'USD' ? holding.valueUSD :
+                         holding.valueINR;
+        }
+      } else {
+        // No exchange rates available, use stored values
+        currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
+                       displayCurrency === 'USD' ? holding.valueUSD :
+                       holding.valueINR;
+      }
+    } else {
+      // Fallback to stored values when quantity or currentPrice is not available
+      currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
+                     displayCurrency === 'USD' ? holding.valueUSD :
+                     holding.valueINR;
+    }
+    
+    return sum + currencyValue;
+  }, 0);
+
   // Category Processing - handles portfolio categorization with user targets
   const enhancedCategoryData = usePortfolioCategoryProcessor({
     holdings,
-    totalValue: holdings.reduce((sum, h) => sum + h.valueSGD, 0),
+    totalValue: totalValue, // Use the calculated totalValue
     displayCurrency,
     intelligence: intelligence || undefined,
     customTargets: allocationTargets // Pass user targets
@@ -156,13 +230,25 @@ export default function PortfolioDashboard() {
     fetchHoldings(); // Refresh to use new targets
   };
 
-  // Calculate total value in selected display currency
-  const totalValue = holdings.reduce((sum, holding) => {
-    const currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
-                         displayCurrency === 'USD' ? holding.valueUSD :
-                         holding.valueINR;
-    return sum + currencyValue;
-  }, 0);
+  // Refresh Prices Handler
+  const handleRefreshPrices = async () => {
+    setRefreshingPrices(true);
+    setToast(null);
+    try {
+      const response = await fetch('/api/prices/update');
+      const data = await response.json();
+      if (data.success) {
+        setToast({ message: `Prices updated: ${data.summary.updated} updated, ${data.summary.failed} failed.`, type: 'success' });
+        refreshAllData();
+      } else {
+        setToast({ message: `Error: ${data.error || 'Unknown error'}`, type: 'error' });
+      }
+    } catch (error) {
+      setToast({ message: 'Network error while updating prices.', type: 'error' });
+    } finally {
+      setRefreshingPrices(false);
+    }
+  };
 
   // Loading State
   if (loading) {
@@ -182,7 +268,7 @@ export default function PortfolioDashboard() {
           
           <div className="bg-gray-800 rounded-lg p-8 text-center border border-gray-700">
             <h2 className="text-xl font-semibold text-gray-200 mb-4">API Connection Issue</h2>
-            <p className="text-gray-400 mb-6">Unable to connect to database. Please check your API endpoint or refresh the page.</p>
+            <p className="text-gray-400 mb-6">Unable to connect to database. Holdings count: {holdings?.length || 'undefined'}. Please check your API endpoint or refresh the page.</p>
             <button
               onClick={() => window.location.reload()}
               className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium"
@@ -224,7 +310,7 @@ export default function PortfolioDashboard() {
         />
 
         {/* Net Worth Tracker */}
-        <NetWorthTracker yearlyData={yearlyData} />
+        <NetWorthTracker yearlyData={yearlyData} portfolioTotal={totalValue} />
 
         {/* Portfolio Allocation with Fixed Portfolio Grid */}
         <div className="mb-6">
@@ -234,37 +320,25 @@ export default function PortfolioDashboard() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-200">
-              Snapshot - No Allocation
+              Holdings
             </h2>
-            <div className="flex items-center gap-3">
-              {/* Edit Targets Button */}
               <button
-                onClick={() => { /* This will be handled by FinancialSetupButton now */ }}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                <span className="hidden sm:inline">Edit Targets</span>
-                <span className="sm:hidden">Edit</span>
-              </button>
-              
-              {/* Live Indicator */}
-              {(isInsightsLive || isIntelligenceLive) && (
-                <div className="flex items-center gap-2 text-sm text-green-400">
-                  <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                  <span className="hidden sm:inline">Smart Analysis Active</span>
-                  <span className="sm:hidden">Live</span>
-                </div>
+              onClick={handleRefreshPrices}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${refreshingPrices ? 'bg-gray-600 text-gray-300' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+              disabled={refreshingPrices}
+            >
+              {refreshingPrices ? (
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582M20 20v-5h-.581M5.635 19.364A9 9 0 104.582 9.582" /></svg>
               )}
-            </div>
+              <span>{refreshingPrices ? 'Updating...' : 'Refresh Prices'}</span>
+            </button>
           </div>
+          {toast && (
+            <div className={`fixed top-6 right-6 z-50 px-4 py-2 rounded shadow-lg font-medium ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>{toast.message}</div>
+          )}
           
-          <h3 className="text-lg font-medium text-gray-400 mb-2">
-            Holdings
-          </h3>
-          
-          {/* ADD APPLE RADIAL ALLOCATION CHART HERE */}
           <AppleRadialAllocation 
             categories={enhancedCategoryData}
             className="mb-6"

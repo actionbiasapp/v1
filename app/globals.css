@@ -626,3 +626,59 @@ body {
     transform: none;
   }
 }
+
+/* ============================================ */
+/*           FORM INPUT STYLING                 */
+/* ============================================ */
+
+/* Hide number input arrows */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* ============================================ */
+/*           MOBILE BUTTON FIXES                */
+/* ============================================ */
+
+/* Ensure SVG icons are visible on mobile */
+@media (max-width: 768px) {
+  /* Force all ActionButtons SVGs to be visible */
+  .action-buttons button svg,
+  .action-buttons .w-3,
+  .action-buttons .w-4,
+  .action-buttons .w-5 {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 12px !important;
+    height: 12px !important;
+  }
+  
+  /* Additional specificity for mobile */
+  .action-buttons button svg path {
+    display: block !important;
+    visibility: visible !important;
+  }
+  
+  /* Force all button SVGs to be visible on mobile */
+  button svg {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  
+  /* Specific fix for portfolio grid buttons */
+  .fixed-portfolio-card .action-buttons button svg {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 12px !important;
+    height: 12px !important;
+  }
+}

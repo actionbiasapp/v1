@@ -30,7 +30,7 @@ export default function FixedPortfolioGrid({
 
   // Build grid className for CSS styling
   const gridClassName = useMemo(() => {
-    return expandedCardName
+    return expandedCardName 
       ? `fixed-portfolio-grid grid-${expandedCardName.toLowerCase()}-expanded`
       : 'fixed-portfolio-grid';
   }, [expandedCardName]);

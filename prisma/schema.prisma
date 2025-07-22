@@ -299,6 +299,7 @@ model Holdings {
   priceSource      String?
   priceUpdated     DateTime?
   unitPrice        Decimal?
+  assetType        String?   // 'stock', 'crypto', or 'manual'
   category         AssetCategory @relation(fields: [categoryId], references: [id])
   user             User          @relation(fields: [userId], references: [id])
 }

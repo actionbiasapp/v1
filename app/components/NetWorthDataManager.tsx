@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { YearlyData } from '@/app/lib/types/shared';
 import AddYearForm from '@/app/components/forms/AddYearForm';
 import EditYearForm from '@/app/components/forms/EditYearForm';
+import ActionButtons from '@/app/components/ui/ActionButtons';
 
 interface NetWorthDataManagerProps {
   yearlyData: YearlyData[];
@@ -96,25 +97,11 @@ export default function NetWorthDataManager({
                         ${data.savings?.toLocaleString()}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <button
-                          className="text-blue-400 hover:text-blue-600 mr-2"
-                          onClick={() => setEditingYear(data)}
-                        >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 20h9"/>
-                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                          </svg>
-                        </button>
-                        <button
-                          className="text-red-400 hover:text-red-600"
-                          onClick={() => onDelete(data.year)}
-                        >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M3 6h18"/>
-                            <path d="M8 6v12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/>
-                            <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>
-                          </svg>
-                        </button>
+                        <ActionButtons
+                          onEdit={() => setEditingYear(data)}
+                          onDelete={() => onDelete(data.year)}
+                          size="sm"
+                        />
                       </td>
                     </tr>
                   ))}
@@ -150,7 +137,7 @@ export default function NetWorthDataManager({
               editingYear={editingYear.year}
               onEdit={handleEdit}
               onCancel={() => setEditingYear(null)}
-            />
+              />
           </div>
         )}
       </div>

@@ -147,7 +147,12 @@ export async function updateHolding(holdingId: string, formData: HoldingFormData
     value: convertedValues.SGD,
     entryCurrency: formData.currency,
     category: categoryName,
-    location: formData.location
+    location: formData.location,
+    quantity: formData.quantity ?? formData._confirmedQuantity ?? null,
+    unitPrice: formData.unitPrice ?? formData._confirmedUnitPrice ?? null,
+    currentUnitPrice: formData.currentUnitPrice ?? null,
+    manualPricing: formData.manualPricing ?? false,
+    assetType: formData.assetType || null
   };
 
   const response = await fetch(`/api/holdings/${holdingId}`, {

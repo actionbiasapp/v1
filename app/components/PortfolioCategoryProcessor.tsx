@@ -1,5 +1,5 @@
 // app/components/PortfolioCategoryProcessor.tsx - Add completion-based logic
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { type CurrencyCode } from '@/app/lib/currency';
 import { type Intelligence, type CategoryData } from '@/app/lib/types/shared';
 
@@ -24,6 +24,20 @@ export function usePortfolioCategoryProcessor({
   intelligence,
   customTargets
 }: PortfolioCategoryProcessorProps): CategoryData[] {
+  const [usdToSgd, setUsdToSgd] = useState(1.35);
+  useEffect(() => {
+    async function fetchRate() {
+      try {
+        const res = await fetch('/api/exchange-rates');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.rates && data.rates.USD_TO_SGD) setUsdToSgd(Number(data.rates.USD_TO_SGD));
+        }
+      } catch {}
+    }
+    fetchRate();
+  }, []);
+
   return useMemo(() => {
     // Use custom targets if provided, otherwise use defaults
     const targets = customTargets || {
@@ -72,9 +86,58 @@ export function usePortfolioCategoryProcessor({
       
       // Calculate current value in display currency
       const currentValue = categoryHoldings.reduce((sum, holding) => {
-        const currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
+        let currencyValue = 0;
+        
+        // Always calculate dynamically using currentPrice × quantity when available
+        if (holding.quantity && holding.currentUnitPrice) {
+          const quantity = holding.quantity;
+          const currentPrice = holding.currentUnitPrice;
+          const entryCurrency = holding.entryCurrency as CurrencyCode;
+          
+          // Calculate the total value in the entry currency
+          const totalValueInEntryCurrency = quantity * currentPrice;
+          
+          // Convert to display currency if needed
+          if (entryCurrency === displayCurrency) {
+            // Same currency, no conversion needed
+            currencyValue = totalValueInEntryCurrency;
+          } else if (usdToSgd) {
+            // Convert from entry currency to display currency
+            try {
+              if (entryCurrency === 'USD' && displayCurrency === 'SGD') {
+                currencyValue = totalValueInEntryCurrency * usdToSgd;
+              } else if (entryCurrency === 'SGD' && displayCurrency === 'USD') {
+                currencyValue = totalValueInEntryCurrency / usdToSgd;
+              } else if (entryCurrency === 'INR' && displayCurrency === 'SGD') {
+                currencyValue = totalValueInEntryCurrency * 0.0148337; // INR_TO_SGD rate
+              } else if (entryCurrency === 'SGD' && displayCurrency === 'INR') {
+                currencyValue = totalValueInEntryCurrency / 0.0148337;
+              } else {
+                // Fallback to stored values for other conversions
+                currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
+                               displayCurrency === 'USD' ? holding.valueUSD :
+                               holding.valueINR;
+              }
+            } catch (error) {
+              console.error('Currency conversion error:', error);
+              // Fallback to stored values
+              currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
                              displayCurrency === 'USD' ? holding.valueUSD :
                              holding.valueINR;
+            }
+          } else {
+            // No exchange rates available, use stored values
+            currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
+                           displayCurrency === 'USD' ? holding.valueUSD :
+                           holding.valueINR;
+          }
+        } else {
+          // Fallback to stored values when quantity or currentPrice is not available
+          currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
+                         displayCurrency === 'USD' ? holding.valueUSD :
+                         holding.valueINR;
+        }
+        
         return sum + currencyValue;
       }, 0);
 

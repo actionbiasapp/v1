@@ -108,7 +108,7 @@ export function usePortfolioData(): UsePortfolioDataReturn {
   ], []);
 
   // Fetch holdings from API
-  const fetchHoldings = useCallback(async () => {
+  const fetchHoldings = async () => {
     try {
       const response = await fetch('/api/holdings');
       if (!response.ok) {
@@ -127,7 +127,7 @@ export function usePortfolioData(): UsePortfolioDataReturn {
     } finally {
       setLoading(false);
     }
-  }, [sampleHoldings]);
+  };
 
   // Fetch dynamic insights from API
   const fetchDynamicInsights = useCallback(async () => {
@@ -313,10 +313,10 @@ export function usePortfolioData(): UsePortfolioDataReturn {
     }
   }, []);
 
-  // Initialize holdings on mount
-  useEffect(() => {
-    fetchHoldings();
-  }, [fetchHoldings]);
+  // Initialize holdings on mount - removed to prevent infinite loop
+  // useEffect(() => {
+  //   fetchHoldings();
+  // }, [fetchHoldings]);
 
   // Fetch insights when holdings are loaded
   useEffect(() => {
