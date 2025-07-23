@@ -1,6 +1,30 @@
 // app/lib/agent/intentRecognition.ts
 import { IntentResult, IntentType, ExtractedHoldingData, ExtractedYearlyData } from './types';
 
+// Company name to symbol mapping
+const COMPANY_SYMBOLS: Record<string, string> = {
+  'apple': 'AAPL',
+  'microsoft': 'MSFT',
+  'google': 'GOOGL',
+  'alphabet': 'GOOGL',
+  'amazon': 'AMZN',
+  'tesla': 'TSLA',
+  'nvidia': 'NVDA',
+  'meta': 'META',
+  'facebook': 'META',
+  'netflix': 'NFLX',
+  'bitcoin': 'BTC',
+  'ethereum': 'ETH',
+  'etf': 'VUAA',
+  'vanguard': 'VUAA',
+  'india': 'INDIA'
+};
+
+const normalizeSymbol = (symbol: string): string => {
+  const normalized = symbol.toLowerCase();
+  return COMPANY_SYMBOLS[normalized] || symbol.toUpperCase();
+};
+
 interface IntentPattern {
   intent: IntentType;
   patterns: RegExp[];
@@ -17,15 +41,21 @@ const INTENT_PATTERNS: IntentPattern[] = [
       /purchased\s+(\w+)\s+(\d+)\s+shares?\s+at\s+\$?(\d+(?:\.\d+)?)/i,
       /add\s+(\w+)\s+(\d+)\s+shares?\s+for\s+\$?(\d+(?:\.\d+)?)/i,
       /bought\s+(\w+)\s+at\s+\$?(\d+(?:\.\d+)?)/i,
-      /add\s+(\w+)\s+to\s+(core|growth|hedge|liquidity)/i
+      /add\s+(\w+)\s+to\s+(core|growth|hedge|liquidity)/i,
+      /add\s+(\d+)\s+shares?\s+of\s+(\w+)\s+at\s+\$?(\d+(?:\.\d+)?)/i,
+      /bought\s+(\d+)\s+shares?\s+of\s+(\w+)\s+at\s+\$?(\d+(?:\.\d+)?)/i,
+      /purchased\s+(\d+)\s+shares?\s+of\s+(\w+)\s+at\s+\$?(\d+(?:\.\d+)?)/i
     ],
     entityExtractors: [
-      (match) => ({ quantity: parseInt(match[1]), symbol: match[2].toUpperCase() }),
-      (match) => ({ quantity: parseInt(match[1]), symbol: match[2].toUpperCase(), unitPrice: parseFloat(match[3]) }),
-      (match) => ({ symbol: match[1].toUpperCase(), quantity: parseInt(match[2]), unitPrice: parseFloat(match[3]) }),
-      (match) => ({ symbol: match[1].toUpperCase(), quantity: parseInt(match[2]), unitPrice: parseFloat(match[3]) }),
-      (match) => ({ symbol: match[1].toUpperCase(), unitPrice: parseFloat(match[2]) }),
-      (match) => ({ symbol: match[1].toUpperCase(), category: match[2] })
+      (match) => ({ quantity: parseInt(match[1]), symbol: normalizeSymbol(match[2]) }),
+      (match) => ({ quantity: parseInt(match[1]), symbol: normalizeSymbol(match[2]), unitPrice: parseFloat(match[3]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), quantity: parseInt(match[2]), unitPrice: parseFloat(match[3]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), quantity: parseInt(match[2]), unitPrice: parseFloat(match[3]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), unitPrice: parseFloat(match[2]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), category: match[2] }),
+      (match) => ({ quantity: parseInt(match[1]), symbol: normalizeSymbol(match[2]), unitPrice: parseFloat(match[3]) }),
+      (match) => ({ quantity: parseInt(match[1]), symbol: normalizeSymbol(match[2]), unitPrice: parseFloat(match[3]) }),
+      (match) => ({ quantity: parseInt(match[1]), symbol: normalizeSymbol(match[2]), unitPrice: parseFloat(match[3]) })
     ]
   },
   
@@ -39,10 +69,10 @@ const INTENT_PATTERNS: IntentPattern[] = [
       /modify\s+(\w+)\s+to\s+(\d+)\s+shares/i
     ],
     entityExtractors: [
-      (match) => ({ symbol: match[1].toUpperCase(), unitPrice: parseFloat(match[2]) }),
-      (match) => ({ symbol: match[1].toUpperCase(), quantity: parseInt(match[2]) }),
-      (match) => ({ symbol: match[1].toUpperCase() }),
-      (match) => ({ symbol: match[1].toUpperCase(), quantity: parseInt(match[2]) })
+      (match) => ({ symbol: normalizeSymbol(match[1]), unitPrice: parseFloat(match[2]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), quantity: parseInt(match[2]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), quantity: parseInt(match[2]) })
     ]
   },
   
@@ -56,10 +86,10 @@ const INTENT_PATTERNS: IntentPattern[] = [
       /exit\s+(\w+)\s+position/i
     ],
     entityExtractors: [
-      (match) => ({ symbol: match[1].toUpperCase() }),
-      (match) => ({ symbol: match[1].toUpperCase() }),
-      (match) => ({ symbol: match[1].toUpperCase() }),
-      (match) => ({ symbol: match[1].toUpperCase() })
+      (match) => ({ symbol: normalizeSymbol(match[1]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]) })
     ]
   },
   

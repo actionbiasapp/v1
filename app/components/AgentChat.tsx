@@ -9,6 +9,11 @@ interface AgentMessage {
   data?: any;
   suggestions?: string[];
   timestamp: Date;
+  pendingAction?: {
+    intent: string;
+    entities: any;
+    message: string;
+  };
 }
 
 interface AgentChatProps {
@@ -65,13 +70,19 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
 
         setMessages(prev => [...prev, agentMessage]);
 
-        // Handle confirmation actions
+        // Handle confirmation actions inline
         if (result.action === 'confirm' && result.data) {
-          // Show confirmation dialog
-          const confirmed = window.confirm(`${result.message}\n\nProceed?`);
-          if (confirmed) {
-            await executeAction(result.data);
-          }
+          const confirmationMessage: AgentMessage = {
+            type: 'agent',
+            content: `${result.message}\n\nWould you like me to proceed?`,
+            pendingAction: {
+              intent: result.data.intent,
+              entities: result.data.entities,
+              message: result.message
+            },
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, confirmationMessage]);
         }
       } else {
         const errorMessage: AgentMessage = {
@@ -139,11 +150,56 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
     inputRef.current?.focus();
   };
 
+  const handleConfirmAction = async (pendingAction: any) => {
+    const action: AgentAction = {
+      type: pendingAction.intent,
+      data: pendingAction.entities
+    };
+  
+    try {
+      const response = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+  
+      const result = await response.json();
+  
+      const actionMessage: AgentMessage = {
+        type: 'agent',
+        content: result.message,
+        timestamp: new Date()
+      };
+  
+      setMessages(prev => [...prev, actionMessage]);
+  
+      if (result.success && onPortfolioUpdate) {
+        onPortfolioUpdate();
+      }
+    } catch (error) {
+      const errorMessage: AgentMessage = {
+        type: 'agent',
+        content: 'Failed to execute action. Please try again.',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  };
+  
+  const handleCancelAction = () => {
+    const cancelMessage: AgentMessage = {
+      type: 'agent',
+      content: 'Action cancelled. How else can I help you?',
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, cancelMessage]);
+  };
+
   const suggestions = [
-    'Add 100 shares of AAPL at $150',
+    'Add 100 shares of Apple at $150',
     '2023 income was $120,000',
     'How is my portfolio performing?',
-    'Delete TSLA holding'
+    'Delete Tesla holding'
   ];
 
   if (!isOpen) {
@@ -209,6 +265,23 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
               }`}
             >
               <div className="whitespace-pre-wrap">{message.content}</div>
+              
+              {message.pendingAction && (
+                <div className="mt-3 flex space-x-2">
+                  <button
+                    onClick={() => handleConfirmAction(message.pendingAction)}
+                    className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 transition-colors"
+                  >
+                    Yes, proceed
+                  </button>
+                  <button
+                    onClick={handleCancelAction}
+                    className="bg-gray-600 text-white px-3 py-1 rounded text-xs hover:bg-gray-700 transition-colors"
+                  >
+                    No, cancel
+                  </button>
+                </div>
+              )}
               
               {message.suggestions && message.suggestions.length > 0 && (
                 <div className="mt-2 space-y-1">
