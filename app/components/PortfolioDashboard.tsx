@@ -1,7 +1,7 @@
 // app/components/PortfolioDashboard.tsx - Add allocation editor integration
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import NetWorthTracker from './NetWorthTracker';
 import FixedPortfolioGrid from './FixedPortfolioGrid';
 import PortfolioStatusMetrics from './PortfolioStatusMetrics';
@@ -18,6 +18,8 @@ import AppleRadialAllocation from './AppleRadialAllocation';
 import { calculatePortfolioValue, type ExchangeRates } from '@/app/lib/portfolioCalculations';
 import AllocationChartCard from './AllocationChartCard';
 import { DEFAULT_ALLOCATION_TARGETS } from '@/app/lib/constants';
+import AgentChat from './AgentChat';
+import { AgentContext } from '@/app/lib/agent/types';
 
 // Live indicator component
 const LiveIndicator = () => (
@@ -324,6 +326,17 @@ export default function PortfolioDashboard() {
           isLoading={insightsLoading}
         />
       </div>
+      
+      {/* Agent Chat */}
+      <AgentChat 
+        context={{
+          currentHoldings: holdings,
+          yearlyData: yearlyData,
+          financialProfile: {},
+          displayCurrency: displayCurrency
+        }}
+        onPortfolioUpdate={refreshAllData}
+      />
     </div>
   );
 }
