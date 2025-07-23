@@ -2,6 +2,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { type CurrencyCode } from '@/app/lib/currency';
 import { type Intelligence, type CategoryData, type Holding } from '@/app/lib/types/shared';
+import { calculateHoldingValue, type ExchangeRates } from '@/app/lib/portfolioCalculations';
 
 interface PortfolioCategoryProcessorProps {
   holdings: Holding[];
@@ -84,61 +85,18 @@ export function usePortfolioCategoryProcessor({
     return categories.map(category => {
       const categoryHoldings = holdings.filter(h => h.category === category.name);
       
-      // Calculate current value in display currency
+      // Calculate current value using centralized calculation
+      const exchangeRates: ExchangeRates | null = usdToSgd ? {
+        SGD_TO_USD: 1 / usdToSgd,
+        SGD_TO_INR: 63.0, // Approximate rate
+        USD_TO_SGD: usdToSgd,
+        USD_TO_INR: usdToSgd * 63.0,
+        INR_TO_SGD: 1 / 63.0,
+        INR_TO_USD: 1 / (usdToSgd * 63.0)
+      } : null;
+      
       const currentValue = categoryHoldings.reduce((sum, holding) => {
-        let currencyValue = 0;
-        
-        // Always calculate dynamically using currentPrice × quantity when available
-        if (holding.quantity && holding.currentUnitPrice) {
-          const quantity = holding.quantity;
-          const currentPrice = holding.currentUnitPrice;
-          const entryCurrency = holding.entryCurrency as CurrencyCode;
-          
-          // Calculate the total value in the entry currency
-          const totalValueInEntryCurrency = quantity * currentPrice;
-          
-          // Convert to display currency if needed
-          if (entryCurrency === displayCurrency) {
-            // Same currency, no conversion needed
-            currencyValue = totalValueInEntryCurrency;
-          } else if (usdToSgd) {
-            // Convert from entry currency to display currency
-            try {
-              if (entryCurrency === 'USD' && displayCurrency === 'SGD') {
-                currencyValue = totalValueInEntryCurrency * usdToSgd;
-              } else if (entryCurrency === 'SGD' && displayCurrency === 'USD') {
-                currencyValue = totalValueInEntryCurrency / usdToSgd;
-              } else if (entryCurrency === 'INR' && displayCurrency === 'SGD') {
-                currencyValue = totalValueInEntryCurrency * 0.0148337; // INR_TO_SGD rate
-              } else if (entryCurrency === 'SGD' && displayCurrency === 'INR') {
-                currencyValue = totalValueInEntryCurrency / 0.0148337;
-              } else {
-                // Fallback to stored values for other conversions
-                currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
-                               displayCurrency === 'USD' ? holding.valueUSD :
-                               holding.valueINR;
-              }
-            } catch (error) {
-              console.error('Currency conversion error:', error);
-              // Fallback to stored values
-              currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
-                             displayCurrency === 'USD' ? holding.valueUSD :
-                             holding.valueINR;
-            }
-          } else {
-            // No exchange rates available, use stored values
-            currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
-                           displayCurrency === 'USD' ? holding.valueUSD :
-                           holding.valueINR;
-          }
-        } else {
-          // Fallback to stored values when quantity or currentPrice is not available
-          currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
-                         displayCurrency === 'USD' ? holding.valueUSD :
-                         holding.valueINR;
-        }
-        
-        return sum + currencyValue;
+        return sum + calculateHoldingValue(holding, displayCurrency, exchangeRates);
       }, 0);
 
       const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;

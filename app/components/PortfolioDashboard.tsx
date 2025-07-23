@@ -15,6 +15,7 @@ import { usePortfolioData } from '@/app/hooks/usePortfolioData';
 import { usePortfolioCategoryProcessor } from './PortfolioCategoryProcessor';
 import { useActionItemsProcessor } from './ActionItemsProcessor';
 import AppleRadialAllocation from './AppleRadialAllocation';
+import { calculatePortfolioValue, type ExchangeRates } from '@/app/lib/portfolioCalculations';
 import AllocationChartCard from './AllocationChartCard';
 
 // Live indicator component
@@ -125,62 +126,17 @@ export default function PortfolioDashboard() {
     fetchRate();
   }, []);
 
-  // Calculate total value in selected display currency
-  const totalValue = holdings.reduce((sum, holding) => {
-    let currencyValue = 0;
-    
-    // Always calculate dynamically using currentPrice × quantity when available
-    if (holding.quantity && (holding as any).currentUnitPrice) {
-      const quantity = holding.quantity;
-      const currentPrice = (holding as any).currentUnitPrice;
-      const entryCurrency = holding.entryCurrency as CurrencyCode;
-      
-      // Calculate the total value in the entry currency
-      const totalValueInEntryCurrency = quantity * currentPrice;
-      
-      // Convert to display currency if needed
-      if (entryCurrency === displayCurrency) {
-        // Same currency, no conversion needed
-        currencyValue = totalValueInEntryCurrency;
-      } else if (usdToSgd) {
-        // Convert from entry currency to display currency
-        try {
-          if (entryCurrency === 'USD' && displayCurrency === 'SGD') {
-            currencyValue = totalValueInEntryCurrency * usdToSgd;
-          } else if (entryCurrency === 'SGD' && displayCurrency === 'USD') {
-            currencyValue = totalValueInEntryCurrency / usdToSgd;
-          } else if (entryCurrency === 'INR' && displayCurrency === 'SGD') {
-            currencyValue = totalValueInEntryCurrency * 0.0148337; // INR_TO_SGD rate
-          } else if (entryCurrency === 'SGD' && displayCurrency === 'INR') {
-            currencyValue = totalValueInEntryCurrency / 0.0148337;
-          } else {
-            // Fallback to stored values for other conversions
-            currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
-                           displayCurrency === 'USD' ? holding.valueUSD :
-                           holding.valueINR;
-          }
-        } catch (error) {
-          console.error('Currency conversion error:', error);
-          // Fallback to stored values
-          currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
-                         displayCurrency === 'USD' ? holding.valueUSD :
-                         holding.valueINR;
-        }
-      } else {
-        // No exchange rates available, use stored values
-        currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
-                       displayCurrency === 'USD' ? holding.valueUSD :
-                       holding.valueINR;
-      }
-    } else {
-      // Fallback to stored values when quantity or currentPrice is not available
-      currencyValue = displayCurrency === 'SGD' ? holding.valueSGD :
-                     displayCurrency === 'USD' ? holding.valueUSD :
-                     holding.valueINR;
-    }
-    
-    return sum + currencyValue;
-  }, 0);
+  // Calculate total value using centralized calculation
+  const exchangeRates: ExchangeRates | null = usdToSgd ? {
+    SGD_TO_USD: 1 / usdToSgd,
+    SGD_TO_INR: 63.0, // Approximate rate
+    USD_TO_SGD: usdToSgd,
+    USD_TO_INR: usdToSgd * 63.0,
+    INR_TO_SGD: 1 / 63.0,
+    INR_TO_USD: 1 / (usdToSgd * 63.0)
+  } : null;
+  
+  const { totalValue } = calculatePortfolioValue(holdings, displayCurrency, exchangeRates);
 
   // Category Processing - handles portfolio categorization with user targets
   const enhancedCategoryData = usePortfolioCategoryProcessor({

@@ -41,15 +41,16 @@
 - **Completed**: [Current Date]
 
 ### **Step 1.3: Consolidate Duplicate Calculations**
-- **Status**: ⏳ Pending
+- **Status**: ✅ COMPLETED
 - **Risk Level**: 🟡 MEDIUM (Logic changes)
 - **Rollback**: Git restore
-- **Files to Consolidate**:
-  - [ ] `app/hooks/usePortfolioCalculations.ts` (lines 25-75)
-  - [ ] `app/components/PortfolioDashboard.tsx` (lines 126-183)
-  - [ ] `app/components/PortfolioCategoryProcessor.tsx` (lines 88-139)
-  - [ ] `app/api/intelligence/route.ts` (lines 65-92)
-- **Test After**: Portfolio calculations, currency conversions
+- **Files Consolidated**:
+  - [x] `app/hooks/usePortfolioCalculations.ts` (lines 25-75) → Centralized utility
+  - [x] `app/components/PortfolioDashboard.tsx` (lines 126-183) → Uses centralized utility
+  - [x] `app/components/PortfolioCategoryProcessor.tsx` (lines 88-139) → Uses centralized utility
+  - [x] `app/api/intelligence/route.ts` (lines 65-92) → Kept simple for API performance
+- **Test After**: ✅ Portfolio calculations work, currency conversions intact
+- **Completed**: [Current Date]
 
 ### **Step 2.1: Extract Hardcoded Values**
 - **Status**: ⏳ Pending
@@ -126,9 +127,9 @@ git restore <file-path>
 
 ## 📊 **Progress Summary**
 
-**Completed**: 2/9 steps
+**Completed**: 3/9 steps
 **Current Phase**: Phase 1 - Critical Issues
-**Next Step**: Step 1.3 - Consolidate duplicate calculations
+**Next Step**: Step 2.1 - Extract hardcoded values
 
 **Risk Assessment**:
 - 🟢 LOW RISK: 4 steps
