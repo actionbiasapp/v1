@@ -1,10 +1,10 @@
 // app/components/PortfolioCategoryProcessor.tsx - Add completion-based logic
 import { useMemo, useEffect, useState } from 'react';
 import { type CurrencyCode } from '@/app/lib/currency';
-import { type Intelligence, type CategoryData } from '@/app/lib/types/shared';
+import { type Intelligence, type CategoryData, type Holding } from '@/app/lib/types/shared';
 
 interface PortfolioCategoryProcessorProps {
-  holdings: any[];
+  holdings: Holding[];
   totalValue: number;
   displayCurrency: CurrencyCode;
   intelligence?: Intelligence;

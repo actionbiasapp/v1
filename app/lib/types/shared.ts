@@ -205,7 +205,7 @@ export interface FinancialProfile {
 // PORTFOLIO CATEGORY INTERFACE
 export interface CategoryData {
   name: string;
-  holdings: any[];                 // Holdings array
+  holdings: Holding[];             // Holdings array
   currentValue: number;            // Current value in display currency
   currentPercent: number;          // Current allocation %
   target: number;                  // Target allocation %
@@ -262,12 +262,32 @@ export interface IntelligenceReport {
 }
 
 // DATA NORMALIZATION HELPERS
-export function normalizeActionItem(item: any): UnifiedActionItem {
+interface RawActionItem {
+  id?: string;
+  type?: string;
+  category?: string;
+  source?: string;
+  title?: string;
+  problem?: string;
+  solution?: string;
+  benefit?: string;
+  timeline?: string;
+  actionText?: string;
+  description?: string;
+  priority?: number;
+  dollarImpact?: number;
+  isClickable?: boolean;
+  completed?: boolean;
+  metadata?: unknown;
+  data?: unknown;
+}
+
+export function normalizeActionItem(item: RawActionItem): UnifiedActionItem {
   return {
     id: item.id || `action-${Date.now()}`,
-    type: item.type || 'optimization',
-    category: item.category || 'portfolio',
-    source: item.source || 'analysis',
+    type: (item.type as 'urgent' | 'opportunity' | 'optimization' | 'warning') || 'optimization',
+    category: (item.category as 'tax' | 'portfolio' | 'allocation' | 'risk' | 'opportunity' | 'performance') || 'portfolio',
+    source: (item.source as 'intelligence' | 'insights' | 'analysis') || 'analysis',
     
     // Primary display properties - smart fallback with title priority
     title: item.title || item.problem || 'Action Required',
@@ -329,7 +349,7 @@ export function calculateProfileCompleteness(profile: Partial<FinancialProfile>)
   let completeness = 0;
   
   coreFields.forEach(({ field, weight }) => {
-    const value = (profile as any)[field];
+    const value = (profile as Record<string, unknown>)[field];
     const hasValue = value !== null && value !== undefined && value !== '';
     
     if (hasValue) {
@@ -347,23 +367,27 @@ export function calculateSavingsRate(annualIncome?: number, annualExpenses?: num
 }
 
 // TYPE GUARDS
-export function isUnifiedActionItem(item: any): item is UnifiedActionItem {
+export function isUnifiedActionItem(item: unknown): item is UnifiedActionItem {
   return (
+    item !== null &&
     typeof item === 'object' &&
-    typeof item.id === 'string' &&
-    typeof item.type === 'string' &&
-    typeof item.title === 'string' &&
-    typeof item.actionText === 'string' &&
-    typeof item.isClickable === 'boolean'
+    'id' in item && typeof (item as any).id === 'string' &&
+    'type' in item && typeof (item as any).type === 'string' &&
+    'title' in item && typeof (item as any).title === 'string' &&
+    'actionText' in item && typeof (item as any).actionText === 'string' &&
+    'isClickable' in item && typeof (item as any).isClickable === 'boolean'
   );
 }
 
-export function isTaxIntelligence(obj: any): obj is TaxIntelligence {
+export function isTaxIntelligence(obj: unknown): obj is TaxIntelligence {
   return (
+    obj !== null &&
     typeof obj === 'object' &&
-    obj.srsOptimization &&
-    typeof obj.srsOptimization.remainingRoom === 'number' &&
-    typeof obj.srsOptimization.taxSavings === 'number'
+    'srsOptimization' in obj &&
+    typeof (obj as any).srsOptimization === 'object' &&
+    (obj as any).srsOptimization !== null &&
+    typeof (obj as any).srsOptimization.remainingRoom === 'number' &&
+    typeof (obj as any).srsOptimization.taxSavings === 'number'
   );
 }
 

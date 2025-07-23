@@ -30,14 +30,15 @@
 - **Completed**: [Current Date]
 
 ### **Step 1.2: Replace `any` Types**
-- **Status**: ⏳ Pending
+- **Status**: ✅ COMPLETED
 - **Risk Level**: 🟡 MEDIUM (Type changes)
 - **Rollback**: Git restore
-- **Files to Fix**:
-  - [ ] `app/lib/types/shared.ts:290` - `normalizeActionItem(item: any)`
-  - [ ] `app/components/PortfolioCategoryProcessor.tsx:18` - `holdings: any[]`
-  - [ ] `app/hooks/usePortfolioCalculations.ts:12` - `exchangeRates: any`
-- **Test After**: TypeScript compilation, runtime functionality
+- **Files Fixed**:
+  - [x] `app/lib/types/shared.ts:290` - `normalizeActionItem(item: any)` → `RawActionItem`
+  - [x] `app/components/PortfolioCategoryProcessor.tsx:18` - `holdings: any[]` → `Holding[]`
+  - [x] `app/hooks/usePortfolioCalculations.ts:12` - `exchangeRates: any` → `ExchangeRates | null`
+- **Test After**: ✅ TypeScript compilation successful, runtime functionality intact
+- **Completed**: [Current Date]
 
 ### **Step 1.3: Consolidate Duplicate Calculations**
 - **Status**: ⏳ Pending
@@ -125,9 +126,9 @@ git restore <file-path>
 
 ## 📊 **Progress Summary**
 
-**Completed**: 1/9 steps
+**Completed**: 2/9 steps
 **Current Phase**: Phase 1 - Critical Issues
-**Next Step**: Step 1.2 - Replace `any` types
+**Next Step**: Step 1.3 - Consolidate duplicate calculations
 
 **Risk Assessment**:
 - 🟢 LOW RISK: 4 steps

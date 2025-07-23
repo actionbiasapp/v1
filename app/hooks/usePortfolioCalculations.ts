@@ -5,10 +5,19 @@ import { type CurrencyCode } from '@/app/lib/currency';
 import { convertCurrency } from '@/app/lib/currency';
 import { type Holding } from '@/app/lib/types/shared';
 
+interface ExchangeRates {
+  SGD_TO_USD: number;
+  SGD_TO_INR: number;
+  USD_TO_SGD: number;
+  USD_TO_INR: number;
+  INR_TO_SGD: number;
+  INR_TO_USD: number;
+}
+
 interface UsePortfolioCalculationsProps {
   holdings: Holding[];
   displayCurrency: CurrencyCode;
-  exchangeRates: any;
+  exchangeRates: ExchangeRates | null;
 }
 
 export function usePortfolioCalculations({
@@ -23,9 +32,9 @@ export function usePortfolioCalculations({
       let currencyValue = 0;
       
       // Always calculate dynamically using currentPrice × quantity when available
-      if (holding.quantity && (holding as any).currentUnitPrice) {
+      if (holding.quantity && holding.currentUnitPrice) {
         const quantity = holding.quantity;
-        const currentPrice = (holding as any).currentUnitPrice;
+        const currentPrice = holding.currentUnitPrice;
         const entryCurrency = holding.entryCurrency as CurrencyCode;
         
         // Calculate the total value in the entry currency
@@ -72,9 +81,9 @@ export function usePortfolioCalculations({
       let currencyValue = 0;
       
       // Always calculate dynamically using currentPrice × quantity when available
-      if (holding.quantity && (holding as any).currentUnitPrice) {
+      if (holding.quantity && holding.currentUnitPrice) {
         const quantity = holding.quantity;
-        const currentPrice = (holding as any).currentUnitPrice;
+        const currentPrice = holding.currentUnitPrice;
         const entryCurrency = holding.entryCurrency as CurrencyCode;
         
         // Calculate the total value in the entry currency
