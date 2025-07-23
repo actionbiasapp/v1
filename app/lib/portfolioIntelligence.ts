@@ -69,12 +69,14 @@ export interface PortfolioIntelligenceReport {
   nextRefresh: string;
 }
 
+import { DEFAULT_ALLOCATION_TARGETS } from './constants';
+
 // Portfolio category targets (Core 25%, Growth 55%, Hedge 10%, Liquidity 10%)
 const ALLOCATION_TARGETS = {
-  Core: 25,
-  Growth: 55, 
-  Hedge: 10,
-  Liquidity: 10
+  Core: DEFAULT_ALLOCATION_TARGETS.core,
+  Growth: DEFAULT_ALLOCATION_TARGETS.growth, 
+  Hedge: DEFAULT_ALLOCATION_TARGETS.hedge,
+  Liquidity: DEFAULT_ALLOCATION_TARGETS.liquidity
 };
 
 /**

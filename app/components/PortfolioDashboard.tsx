@@ -17,6 +17,7 @@ import { useActionItemsProcessor } from './ActionItemsProcessor';
 import AppleRadialAllocation from './AppleRadialAllocation';
 import { calculatePortfolioValue, type ExchangeRates } from '@/app/lib/portfolioCalculations';
 import AllocationChartCard from './AllocationChartCard';
+import { DEFAULT_ALLOCATION_TARGETS } from '@/app/lib/constants';
 
 // Live indicator component
 const LiveIndicator = () => (
@@ -27,13 +28,7 @@ const LiveIndicator = () => (
 );
 
 // Default allocation targets
-const DEFAULT_TARGETS = {
-  core: 25,
-  growth: 55,
-  hedge: 10,
-  liquidity: 10,
-  rebalanceThreshold: 5
-};
+const DEFAULT_TARGETS = DEFAULT_ALLOCATION_TARGETS;
 
 export default function PortfolioDashboard() {
   // UI State

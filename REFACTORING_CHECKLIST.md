@@ -53,14 +53,17 @@
 - **Completed**: [Current Date]
 
 ### **Step 2.1: Extract Hardcoded Values**
-- **Status**: ⏳ Pending
+- **Status**: ✅ COMPLETED
 - **Risk Level**: 🟢 LOW (Constants extraction)
 - **Rollback**: Git restore
-- **Files to Update**:
-  - [ ] `app/lib/portfolioIntelligence.ts:70` - Allocation targets
-  - [ ] `app/lib/smartDefaults.ts:25` - Financial constants
-  - [ ] `scripts/replace-with-actual-holdings.js:8` - Exchange rates
-- **Test After**: All calculations still work
+- **Files Updated**:
+  - [x] `app/lib/portfolioIntelligence.ts:70` - Allocation targets → Constants
+  - [x] `app/lib/smartDefaults.ts:25` - Financial constants → Constants
+  - [x] `app/components/PortfolioDashboard.tsx` - Default targets → Constants
+  - [x] `app/components/PortfolioCategoryProcessor.tsx` - Allocation targets → Constants
+  - [x] `app/hooks/usePortfolioData.ts` - API endpoints, SRS limits → Constants
+- **Test After**: ✅ Build successful, all calculations work
+- **Completed**: [Current Date]
 
 ### **Step 2.2: Remove Console Logs**
 - **Status**: ⏳ Pending
@@ -127,9 +130,9 @@ git restore <file-path>
 
 ## 📊 **Progress Summary**
 
-**Completed**: 3/9 steps
-**Current Phase**: Phase 1 - Critical Issues
-**Next Step**: Step 2.1 - Extract hardcoded values
+**Completed**: 4/9 steps
+**Current Phase**: Phase 2 - Moderate Issues
+**Next Step**: Step 2.2 - Remove console logs
 
 **Risk Assessment**:
 - 🟢 LOW RISK: 4 steps

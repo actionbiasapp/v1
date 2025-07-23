@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { type CurrencyCode, getHoldingDisplayValue } from '@/app/lib/currency';
+import { API_ENDPOINTS, FINANCIAL_CONSTANTS } from '@/app/lib/constants';
 import { 
   generateComprehensiveInsights, 
   calculatePortfolioMetrics,
@@ -105,12 +106,12 @@ export function usePortfolioData(): UsePortfolioDataReturn {
     { id: '17', symbol: 'SGD', name: 'Singapore Dollar', value: 30000, valueSGD: 30000, valueINR: 1905000, valueUSD: 22200, entryCurrency: 'SGD', category: 'Liquidity', location: 'DBS Bank' },
     { id: '18', symbol: 'USDC', name: 'USD Coin', value: 30000, valueSGD: 30000, valueINR: 1905000, valueUSD: 22200, entryCurrency: 'SGD', category: 'Liquidity', location: 'Aave' },
     { id: '19', symbol: 'USDC', name: 'USD Coin', value: 3000, valueSGD: 3000, valueINR: 190500, valueUSD: 2220, entryCurrency: 'SGD', category: 'Liquidity', location: 'Binance' }
-  ], []);
+      ], []);
 
   // Fetch holdings from API
   const fetchHoldings = async () => {
     try {
-      const response = await fetch('/api/holdings');
+      const response = await fetch(API_ENDPOINTS.HOLDINGS);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -140,7 +141,7 @@ export function usePortfolioData(): UsePortfolioDataReturn {
     setInsightsError(null);
     
     try {
-      const response = await fetch('/api/insights');
+      const response = await fetch(API_ENDPOINTS.INSIGHTS);
       const data = await response.json();
       
       console.log('AI Insights API Response:', data);
@@ -199,7 +200,7 @@ export function usePortfolioData(): UsePortfolioDataReturn {
             daysToDeadline: srsAnalysis.urgencyDays,
             monthlyTarget: srsAnalysis.monthlyTarget || 0,
             urgencyLevel: srsAnalysis.urgencyLevel,
-            maxContribution: 35700,
+            maxContribution: FINANCIAL_CONSTANTS.SRS_LIMIT_EMPLOYMENT_PASS,
             currentContributions: 0,
             taxBracket: 15
           },
@@ -222,12 +223,12 @@ export function usePortfolioData(): UsePortfolioDataReturn {
         // Set safe default tax intelligence
         setTaxIntelligence({
           srsOptimization: {
-            remainingRoom: 35700,
+            remainingRoom: FINANCIAL_CONSTANTS.SRS_LIMIT_EMPLOYMENT_PASS,
             taxSavings: 5000,
             daysToDeadline: 175,
             monthlyTarget: 2975,
             urgencyLevel: 'medium',
-            maxContribution: 35700,
+            maxContribution: FINANCIAL_CONSTANTS.SRS_LIMIT_EMPLOYMENT_PASS,
             currentContributions: 0,
             taxBracket: 15
           },
@@ -254,7 +255,7 @@ export function usePortfolioData(): UsePortfolioDataReturn {
     
     setIntelligenceLoading(true);
     try {
-      const response = await fetch('/api/intelligence');
+      const response = await fetch(API_ENDPOINTS.INTELLIGENCE);
       if (!response.ok) {
         throw new Error(`Intelligence API error: ${response.status}`);
       }
@@ -280,7 +281,7 @@ export function usePortfolioData(): UsePortfolioDataReturn {
   const handleInsightAction = useCallback(async (insight: ActionItem) => {
     try {
       // Log the action
-      await fetch('/api/insights/action', {
+      await fetch(`${API_ENDPOINTS.INSIGHTS}/action`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

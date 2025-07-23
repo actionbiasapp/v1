@@ -1,5 +1,7 @@
 // app/lib/smartDefaults.ts (INTELLIGENT AUTO-POPULATION)
 
+import { FINANCIAL_CONSTANTS } from './constants';
+
 interface PortfolioData {
   totalValue: number;
   monthlyContributions?: number;
@@ -22,20 +24,20 @@ interface SmartDefaults {
  */
 export function generateSmartDefaults(portfolioData: PortfolioData): SmartDefaults {
   const { totalValue } = portfolioData;
-  
+
   // Smart income estimation based on portfolio size
   // Sophisticated investors typically have 20-40% savings rates
-  const estimatedSavingsRate = 0.30; // Conservative 30%
+  const estimatedSavingsRate = FINANCIAL_CONSTANTS.DEFAULT_SAVINGS_RATE; // Conservative 30%
   const estimatedIncome = Math.round(totalValue * 0.2 / estimatedSavingsRate); // Assume 5 years of savings
   
   // Smart expense calculation
   const estimatedExpenses = Math.round(estimatedIncome * (1 - estimatedSavingsRate));
   
   // SRS optimization for Employment Pass holders
-  const optimalSRS = Math.min(35700, estimatedIncome * 0.15); // Max 15% of income to SRS
+  const optimalSRS = Math.min(FINANCIAL_CONSTANTS.SRS_LIMIT_EMPLOYMENT_PASS, estimatedIncome * 0.15); // Max 15% of income to SRS
   
   // FI target based on 4% rule + Singapore context
-  const singaporeFIMultiplier = 25; // 4% rule = 25x expenses, but Singapore is expensive
+  const singaporeFIMultiplier = FINANCIAL_CONSTANTS.LEAN_FI_MULTIPLIER; // 4% rule = 25x expenses, but Singapore is expensive
   const fiTarget = Math.round(estimatedExpenses * singaporeFIMultiplier);
   
   // FI year based on current trajectory

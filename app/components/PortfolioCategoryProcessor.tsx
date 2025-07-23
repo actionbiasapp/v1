@@ -3,6 +3,7 @@ import { useMemo, useEffect, useState } from 'react';
 import { type CurrencyCode } from '@/app/lib/currency';
 import { type Intelligence, type CategoryData, type Holding } from '@/app/lib/types/shared';
 import { calculateHoldingValue, type ExchangeRates } from '@/app/lib/portfolioCalculations';
+import { DEFAULT_ALLOCATION_TARGETS } from '@/app/lib/constants';
 
 interface PortfolioCategoryProcessorProps {
   holdings: Holding[];
@@ -39,15 +40,9 @@ export function usePortfolioCategoryProcessor({
     fetchRate();
   }, []);
 
-  return useMemo(() => {
+    return useMemo(() => {
     // Use custom targets if provided, otherwise use defaults
-    const targets = customTargets || {
-      core: 25,
-      growth: 55,
-      hedge: 10,
-      liquidity: 10,
-      rebalanceThreshold: 5
-    };
+    const targets = customTargets || DEFAULT_ALLOCATION_TARGETS;
 
     // Category definitions with custom targets
     const categories = [
