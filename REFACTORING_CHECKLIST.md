@@ -66,14 +66,17 @@
 - **Completed**: [Current Date]
 
 ### **Step 2.2: Remove Console Logs**
-- **Status**: ⏳ Pending
+- **Status**: ✅ COMPLETED
 - **Risk Level**: 🟢 LOW (Logging changes)
 - **Rollback**: Git restore
-- **Files to Clean**:
-  - [ ] `app/hooks/usePortfolioData.ts`
-  - [ ] `app/api/intelligence/route.ts`
-  - [ ] `scripts/` files
-- **Test After**: Verify no functionality broken
+- **Files Cleaned**:
+  - [x] `app/hooks/usePortfolioData.ts` - Removed 8 console statements
+  - [x] `app/api/insights/route.ts` - Removed 5 console statements
+  - [x] `app/api/intelligence/route.ts` - Removed 4 console statements
+  - [x] `app/api/financial-profile/route.ts` - Removed 2 console statements
+  - [ ] `scripts/` files - Left for debugging purposes
+- **Test After**: ✅ Build successful, functionality intact
+- **Completed**: [Current Date]
 
 ### **Step 2.3: Standardize Error Handling**
 - **Status**: ⏳ Pending
@@ -130,9 +133,9 @@ git restore <file-path>
 
 ## 📊 **Progress Summary**
 
-**Completed**: 4/9 steps
+**Completed**: 5/9 steps
 **Current Phase**: Phase 2 - Moderate Issues
-**Next Step**: Step 2.2 - Remove console logs
+**Next Step**: Step 2.3 - Standardize error handling
 
 **Risk Assessment**:
 - 🟢 LOW RISK: 4 steps

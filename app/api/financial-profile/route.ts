@@ -136,7 +136,7 @@ export async function PATCH(request: NextRequest) {
     
     const userId = user.id;
     
-    console.log('📊 Updating allocation targets for user:', userId, allocationTargets);
+
     
     // Validate allocation targets
     const { core, growth, hedge, liquidity, rebalanceThreshold } = allocationTargets;
@@ -177,7 +177,7 @@ export async function PATCH(request: NextRequest) {
       }
     });
     
-    console.log('✅ Allocation targets updated successfully');
+
     
     return NextResponse.json({ 
       success: true,

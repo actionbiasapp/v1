@@ -179,7 +179,7 @@ export async function GET() {
     }
     
     const userId = firstHolding.userId;
-    console.log('Found user ID:', userId);
+
     
     const rateLimitResult = checkRateLimit(userId);
     if (!rateLimitResult.allowed) {
@@ -201,7 +201,7 @@ export async function GET() {
       })
     ]);
     
-    console.log('Holdings found:', holdings.length);
+
     
     if (!holdings || holdings.length === 0) {
       return NextResponse.json({
@@ -243,7 +243,7 @@ export async function GET() {
         }
       }
     } catch (error) {
-      console.log('Could not load user allocation targets, using defaults');
+  
     }
 
     // Fallback to defaults if no custom targets found
@@ -316,14 +316,7 @@ export async function GET() {
     
     updateRateLimit(userId);
     
-    console.log(`Enhanced intelligence generated for user ${userId}:`, {
-      holdingsCount: formattedHoldings.length,
-      totalValue: totalValue,
-      actionsGenerated: enhancedActions.length,
-      taxActionsAdded: taxActions.length,
-      estimatedIncome,
-      srsOpportunity: taxIntelligence.srsOptimization.taxSavings
-    });
+    // Match the exact structure your dashboard expects
     
     // Match the exact structure your dashboard expects
     return NextResponse.json({

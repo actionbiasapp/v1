@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     });
     
     const userId = allHoldings.length > 0 ? allHoldings[0].userId : 'default-user';
-    console.log('Using user ID:', userId);
+
     
     // Fetch user's current portfolio
     const holdings = await prisma.holdings.findMany({
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       orderBy: { valueSGD: 'desc' }
     });
 
-    console.log('Holdings found:', holdings.length);
+
 
     if (holdings.length === 0) {
       return NextResponse.json({
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
     const { actionType, insightId, metadata } = await request.json();
     
     // Log the action for analytics
-    console.log('Insight action taken:', { actionType, insightId, metadata });
+
     
     // Here you could:
     // 1. Save the action to database for tracking
@@ -249,7 +249,7 @@ export async function DELETE(request: NextRequest) {
     }
     
     // Here you could save dismissed insights to prevent them from reappearing
-    console.log('Insight dismissed:', insightId);
+
     
     return NextResponse.json({
       success: true,
@@ -302,13 +302,16 @@ async function saveInsightInteraction(
 ) {
   try {
     // This would save to a UserInsightInteraction table
-    console.log('Saving insight interaction:', {
-      userId,
-      insightId,
-      actionType,
-      metadata,
-      timestamp: new Date().toISOString()
-    });
+    // Future implementation:
+    // await prisma.userInsightInteraction.create({
+    //   data: {
+    //     userId,
+    //     insightId,
+    //     actionType,
+    //     metadata: JSON.stringify(metadata),
+    //     timestamp: new Date()
+    //   }
+    // });
     
     // Future implementation:
     // await prisma.userInsightInteraction.create({

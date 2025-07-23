@@ -119,11 +119,9 @@ export function usePortfolioData(): UsePortfolioDataReturn {
       if (Array.isArray(data) && data.length > 0) {
         setHoldings(data);
       } else {
-        console.warn('API returned empty data, using sample portfolio');
         setHoldings(sampleHoldings);
       }
     } catch (error) {
-      console.error('Error fetching holdings, using sample data:', error);
       setHoldings(sampleHoldings);
     } finally {
       setLoading(false);
@@ -133,7 +131,6 @@ export function usePortfolioData(): UsePortfolioDataReturn {
   // Fetch dynamic insights from API
   const fetchDynamicInsights = useCallback(async () => {
     if (!holdings || holdings.length === 0) {
-      console.log('⚠️ No holdings available for AI insights');
       return;
     }
     
@@ -144,21 +141,16 @@ export function usePortfolioData(): UsePortfolioDataReturn {
       const response = await fetch(API_ENDPOINTS.INSIGHTS);
       const data = await response.json();
       
-      console.log('AI Insights API Response:', data);
-      
       if (data.success && data.insights) {
         // Use shared normalization function
         const normalizedInsights = data.insights.map(normalizeActionItem);
         setDynamicInsights(normalizedInsights);
         setTaxIntelligence(data.taxIntelligence);
         setIsInsightsLive(true);
-        console.log('✅ Dynamic AI insights loaded:', normalizedInsights);
       } else {
-        console.warn('API returned unsuccessful response:', data);
         throw new Error(data.error || 'Failed to fetch insights');
       }
     } catch (error) {
-      console.error('Error fetching dynamic insights:', error);
       setInsightsError(error instanceof Error ? error.message : 'Failed to fetch insights');
       setIsInsightsLive(false);
       
@@ -216,9 +208,7 @@ export function usePortfolioData(): UsePortfolioDataReturn {
           }
         });
         
-        console.log('✅ Using local AI insights as fallback');
       } catch (localError) {
-        console.error('Local analysis also failed:', localError);
         setDynamicInsights([]);
         // Set safe default tax intelligence
         setTaxIntelligence({
@@ -265,12 +255,10 @@ export function usePortfolioData(): UsePortfolioDataReturn {
       if (data.success && data.intelligence) {
         setIntelligence(data.intelligence);
         setIsIntelligenceLive(true);
-        console.log('✅ Legacy intelligence loaded:', data.intelligence);
       } else {
         throw new Error('Intelligence API returned invalid data');
       }
     } catch (error) {
-      console.warn('Legacy intelligence API failed:', error);
       setIsIntelligenceLive(false);
     } finally {
       setIntelligenceLoading(false);
@@ -309,7 +297,6 @@ export function usePortfolioData(): UsePortfolioDataReturn {
       }
       
     } catch (error) {
-      console.error('Error handling insight action:', error);
       alert('Action recorded successfully');
     }
   }, []);
