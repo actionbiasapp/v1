@@ -11,6 +11,9 @@ import {
 } from './types';
 import { IntentRecognition } from './intentRecognition';
 import { DataValidator } from './validator';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export class PortfolioAgent {
   static async processMessage(request: AgentRequest): Promise<AgentResponse> {
@@ -123,31 +126,83 @@ export class PortfolioAgent {
   
   private static async executeAddHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
     try {
-      const response = await fetch('/api/holdings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          symbol: data.symbol,
-          name: data.name || data.symbol,
-          quantity: data.quantity,
-          unitPrice: data.unitPrice,
-          currency: data.currency || 'SGD',
-          category: data.category || 'Growth',
-          location: data.location || 'IBKR'
-        })
+      // Calculate the total value based on quantity and unit price
+      const totalValue = data.quantity && data.unitPrice ? data.quantity * data.unitPrice : 0;
+      
+      // Convert currency values (for now, assume SGD as base)
+      let valueSGD = totalValue;
+      let valueUSD = 0;
+      let valueINR = 0;
+      
+      if (data.currency === 'USD') {
+        valueUSD = totalValue;
+        valueSGD = totalValue * 1.35; // Approximate USD to SGD conversion
+      } else if (data.currency === 'INR') {
+        valueINR = totalValue;
+        valueSGD = totalValue / 63.5; // Approximate INR to SGD conversion
+      }
+      
+      // Get or create user (for testing - using default user)
+      let user = await prisma.user.findFirst({
+        where: { id: 'default-user' }
       });
       
-      if (response.ok) {
-        return { 
-          success: true, 
-          message: `Successfully added ${data.symbol} to your portfolio` 
-        };
-      } else {
-        const error = await response.json();
-        return { success: false, message: error.error || 'Failed to add holding' };
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            id: 'default-user',
+            email: 'default@example.com',
+            name: 'Default User'
+          }
+        });
       }
+      
+      // Get or create category
+      let category = await prisma.assetCategory.findFirst({
+        where: { 
+          name: data.category || 'Growth',
+          userId: user.id
+        }
+      });
+      
+      if (!category) {
+        category = await prisma.assetCategory.create({
+          data: {
+            name: data.category || 'Growth',
+            targetPercentage: 25,
+            userId: user.id
+          }
+        });
+      }
+      
+      // Create the holding
+      const holding = await prisma.holdings.create({
+        data: {
+          symbol: data.symbol,
+          name: data.name || `${data.symbol} Stock`,
+          valueSGD: valueSGD,
+          valueUSD: valueUSD,
+          valueINR: valueINR,
+          entryCurrency: data.currency || 'SGD',
+          quantity: data.quantity,
+          unitPrice: data.unitPrice,
+          currentUnitPrice: data.unitPrice, // Set current price to unit price initially
+          categoryId: category.id,
+          location: data.location || 'IBKR',
+          userId: user.id,
+          priceSource: 'manual',
+          priceUpdated: new Date()
+        }
+      });
+      
+      return { 
+        success: true, 
+        message: `Successfully added ${data.quantity} shares of ${data.symbol} to your portfolio` 
+      };
+      
     } catch (error) {
-      return { success: false, message: 'Network error while adding holding' };
+      console.error('Add holding error:', error);
+      return { success: false, message: 'Database error while adding holding' };
     }
   }
   
@@ -163,30 +218,64 @@ export class PortfolioAgent {
   
   private static async executeAddYearlyData(data: any): Promise<{ success: boolean; message: string; data?: any }> {
     try {
-      const response = await fetch('/api/yearly-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          year: data.year,
-          income: data.income,
-          expenses: data.expenses,
-          netWorth: data.netWorth,
-          savings: data.savings,
-          marketGains: data.marketGains
-        })
+      // Get or create user (for testing - using default user)
+      let user = await prisma.user.findFirst({
+        where: { id: 'default-user' }
       });
       
-      if (response.ok) {
-        return { 
-          success: true, 
-          message: `Successfully added data for ${data.year}` 
-        };
-      } else {
-        const error = await response.json();
-        return { success: false, message: error.error || 'Failed to add yearly data' };
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            id: 'default-user',
+            email: 'default@example.com',
+            name: 'Default User'
+          }
+        });
       }
+      
+      // Check if yearly data already exists for this year
+      const existingData = await prisma.yearlyData.findFirst({
+        where: {
+          userId: user.id,
+          year: data.year
+        }
+      });
+      
+      if (existingData) {
+        // Update existing data
+        await prisma.yearlyData.update({
+          where: { id: existingData.id },
+          data: {
+            netWorth: data.netWorth || existingData.netWorth,
+            income: data.income || existingData.income,
+            expenses: data.expenses || existingData.expenses,
+            savings: data.savings || existingData.savings,
+            marketGains: data.marketGains || existingData.marketGains
+          }
+        });
+      } else {
+        // Create new data
+        await prisma.yearlyData.create({
+          data: {
+            userId: user.id,
+            year: data.year,
+            netWorth: data.netWorth || 0,
+            income: data.income || 0,
+            expenses: data.expenses || 0,
+            savings: data.savings || 0,
+            marketGains: data.marketGains || 0
+          }
+        });
+      }
+      
+      return { 
+        success: true, 
+        message: `Successfully added data for ${data.year}` 
+      };
+      
     } catch (error) {
-      return { success: false, message: 'Network error while adding yearly data' };
+      console.error('Add yearly data error:', error);
+      return { success: false, message: 'Database error while adding yearly data' };
     }
   }
   
