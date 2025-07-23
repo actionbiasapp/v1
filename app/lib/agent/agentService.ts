@@ -11,6 +11,7 @@ import {
 } from './types';
 import { IntentRecognition } from './intentRecognition';
 import { DataValidator } from './validator';
+import { SmartHoldingMatcher, SmartMatchResult } from './smartMatching';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -48,6 +49,64 @@ export class PortfolioAgent {
         case 'delete_holding':
           extractedData = IntentRecognition.extractHoldingData(message);
           validation = await DataValidator.validateHoldingData(extractedData, context);
+          
+          // For add_holding, perform smart matching
+          if (intentResult.intent === 'add_holding' && validation.isValid) {
+            const matchResult = await SmartHoldingMatcher.findMatches(
+              extractedData.symbol, 
+              context.currentHoldings || []
+            );
+            
+            // If we found a good match, suggest adding to existing holding
+            if (matchResult.suggestedAction === 'add_to_existing' && matchResult.bestMatch) {
+              return {
+                action: 'confirm',
+                data: {
+                  intent: 'add_to_existing_holding',
+                  entities: {
+                    ...extractedData,
+                    existingHoldingId: matchResult.bestMatch.id,
+                    existingHoldingName: matchResult.bestMatch.name,
+                    matchConfidence: matchResult.bestMatch.confidence
+                  },
+                  confidence: intentResult.confidence
+                },
+                message: `I found an existing holding: ${matchResult.bestMatch.name} (${matchResult.bestMatch.symbol}). Would you like to add ${extractedData.quantity} shares at $${extractedData.unitPrice} to this existing position?`,
+                confidence: validation.confidence
+              };
+            }
+            
+            // If we need clarification, show options
+            if (matchResult.suggestedAction === 'clarify' && matchResult.matches.length > 0) {
+              const options = matchResult.matches.map(match => 
+                `${match.name} (${match.symbol}) - ${Math.round(match.confidence * 100)}% match`
+              );
+              
+              return {
+                action: 'clarify',
+                data: {
+                  intent: 'add_holding',
+                  entities: extractedData,
+                  matches: matchResult.matches
+                },
+                message: `I found similar holdings in your portfolio. Which one did you mean?\n\n${options.join('\n')}\n\nOr is this a new holding?`,
+                confidence: validation.confidence,
+                suggestions: [
+                  ...options,
+                  'This is a new holding'
+                ]
+              };
+            }
+            
+            // If no matches found, continue to normal flow for new holding
+            if (matchResult.suggestedAction === 'create_new') {
+              // Continue to Step 3 for new holding creation
+            } else {
+              // If we've already handled the response above, don't continue
+              break;
+            }
+          }
+          
           break;
           
         case 'add_yearly_data':
@@ -105,6 +164,9 @@ export class PortfolioAgent {
       switch (action.type) {
         case 'add_holding':
           return await this.executeAddHolding(action.data);
+          
+        case 'add_to_existing_holding':
+          return await this.executeAddToExistingHolding(action.data);
           
         case 'edit_holding':
           return await this.executeEditHolding(action.data);
@@ -224,6 +286,61 @@ export class PortfolioAgent {
     } catch (error) {
       console.error('Add holding error:', error);
       return { success: false, message: 'Database error while adding holding' };
+    }
+  }
+  
+  private static async executeAddToExistingHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      const { existingHoldingId, quantity, unitPrice } = data;
+
+      const existingHolding = await prisma.holdings.findFirst({
+        where: { id: existingHoldingId }
+      });
+
+      if (!existingHolding) {
+        return { success: false, message: 'Existing holding not found' };
+      }
+
+      // Calculate the total value based on quantity and unit price
+      const totalValue = quantity && unitPrice ? quantity * unitPrice : 0;
+      
+      // Set values in the correct currency
+      let valueSGD = 0;
+      let valueUSD = 0;
+      let valueINR = 0;
+      
+      if (existingHolding.entryCurrency === 'USD') {
+        valueUSD = totalValue;
+        valueSGD = totalValue * 1.35; // Approximate USD to SGD conversion
+      } else if (existingHolding.entryCurrency === 'INR') {
+        valueINR = totalValue;
+        valueSGD = totalValue / 63.5; // Approximate INR to SGD conversion
+      } else {
+        // Default to SGD
+        valueSGD = totalValue;
+      }
+
+      // Update the existing holding
+      await prisma.holdings.update({
+        where: { id: existingHoldingId },
+        data: {
+          quantity: (Number(existingHolding.quantity) || 0) + quantity,
+          valueSGD: (Number(existingHolding.valueSGD) || 0) + valueSGD,
+          valueUSD: (Number(existingHolding.valueUSD) || 0) + valueUSD,
+          valueINR: (Number(existingHolding.valueINR) || 0) + valueINR,
+          currentUnitPrice: unitPrice, // Update current price
+          priceUpdated: new Date()
+        }
+      });
+      
+      return { 
+        success: true, 
+        message: `Successfully added ${quantity} shares of ${existingHolding.symbol} to your portfolio` 
+      };
+      
+    } catch (error) {
+      console.error('Add to existing holding error:', error);
+      return { success: false, message: 'Database error while adding to existing holding' };
     }
   }
   

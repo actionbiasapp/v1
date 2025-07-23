@@ -52,6 +52,7 @@ export type IntentType =
 
 export type ActionType = 
   | 'add_holding'
+  | 'add_to_existing_holding'
   | 'edit_holding'
   | 'delete_holding'
   | 'add_yearly_data'
