@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { 
+  handleApiError, 
+  validateRequiredFields, 
+  createValidationErrorResponse 
+} from '@/app/lib/errorHandling';
 
 const prisma = new PrismaClient();
 
@@ -39,8 +44,7 @@ export async function GET() {
 
     return NextResponse.json(formattedHoldings);
   } catch (error) {
-    console.error('Error fetching holdings:', error);
-    return NextResponse.json({ error: 'Failed to fetch holdings' }, { status: 500 });
+    return handleApiError(error, 'GET /api/holdings');
   }
 }
 
@@ -69,11 +73,9 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validation
-    if (!symbol || !name || !category || !location) {
-      return NextResponse.json(
-        { error: 'Missing required fields: symbol, name, category, location' },
-        { status: 400 }
-      );
+    const validation = validateRequiredFields(body, ['symbol', 'name', 'category', 'location']);
+    if (!validation.isValid) {
+      return createValidationErrorResponse(validation.missingFields);
     }
 
     // Ensure we have valid currency values
@@ -82,9 +84,9 @@ export async function POST(request: NextRequest) {
     const usdValue = valueUSD || 0;
 
     if (sgdValue <= 0) {
-      return NextResponse.json(
-        { error: 'Invalid holding value' },
-        { status: 400 }
+      return handleApiError(
+        new Error('Invalid holding value - value must be greater than 0'),
+        'POST /api/holdings'
       );
     }
 
@@ -181,21 +183,6 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Error creating holding:', error);
-    
-    // Handle specific Prisma errors
-    if (error instanceof Error) {
-      if (error.message.includes('Unique constraint')) {
-        return NextResponse.json(
-          { error: 'A holding with this symbol already exists in this category' },
-          { status: 409 }
-        );
-      }
-    }
-    
-    return NextResponse.json(
-      { error: 'Failed to create holding' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'POST /api/holdings');
   }
 }

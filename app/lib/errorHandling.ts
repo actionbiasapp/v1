@@ -1,5 +1,5 @@
 // app/lib/errorHandling.ts
-// Centralized error handling utilities
+// Centralized error handling utilities - Backward Compatible
 
 import { NextResponse } from 'next/server';
 import { ERROR_MESSAGES } from './constants';
@@ -15,12 +15,6 @@ export interface AppError {
 export interface ErrorResponse {
   success: false;
   error: AppError;
-}
-
-export interface SuccessResponse<T = any> {
-  success: true;
-  data: T;
-  timestamp: string;
 }
 
 /**
@@ -43,6 +37,7 @@ export function createAppError(
 
 /**
  * Create a standardized error response for API routes
+ * This ONLY changes error responses, not success responses
  */
 export function createErrorResponse(
   code: string,
@@ -59,36 +54,8 @@ export function createErrorResponse(
 }
 
 /**
- * Create a standardized success response for API routes
- * Use this for APIs that expect { success: true, data: ... } structure
- */
-export function createSuccessResponse<T>(
-  data: T,
-  statusCode: number = 200
-): NextResponse<SuccessResponse<T>> {
-  return NextResponse.json(
-    {
-      success: true,
-      data,
-      timestamp: new Date().toISOString()
-    },
-    { status: statusCode }
-  );
-}
-
-/**
- * Create a legacy-compatible success response
- * Use this for APIs that return data directly (like holdings API)
- */
-export function createLegacySuccessResponse<T>(
-  data: T,
-  statusCode: number = 200
-): NextResponse<T> {
-  return NextResponse.json(data, { status: statusCode });
-}
-
-/**
  * Handle common API errors with standardized responses
+ * This ONLY changes error responses, maintains success response compatibility
  */
 export function handleApiError(error: unknown, context: string): NextResponse<ErrorResponse> {
   console.error(`API Error in ${context}:`, error);
@@ -138,22 +105,6 @@ export function handleApiError(error: unknown, context: string): NextResponse<Er
     500,
     'An unexpected error occurred'
   );
-}
-
-/**
- * Safe async wrapper for API route handlers
- */
-export function withErrorHandling<T extends any[], R>(
-  handler: (...args: T) => Promise<R>,
-  context: string
-) {
-  return async (...args: T): Promise<R> => {
-    try {
-      return await handler(...args);
-    } catch (error) {
-      throw new Error(`${context}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  };
 }
 
 /**
