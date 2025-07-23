@@ -129,8 +129,8 @@ export class PortfolioAgent {
       // Calculate the total value based on quantity and unit price
       const totalValue = data.quantity && data.unitPrice ? data.quantity * data.unitPrice : 0;
       
-      // Convert currency values (for now, assume SGD as base)
-      let valueSGD = totalValue;
+      // Set values in the correct currency
+      let valueSGD = 0;
       let valueUSD = 0;
       let valueINR = 0;
       
@@ -140,6 +140,9 @@ export class PortfolioAgent {
       } else if (data.currency === 'INR') {
         valueINR = totalValue;
         valueSGD = totalValue / 63.5; // Approximate INR to SGD conversion
+      } else {
+        // Default to SGD
+        valueSGD = totalValue;
       }
       
       // Get or create user (for testing - using default user)
@@ -175,11 +178,29 @@ export class PortfolioAgent {
         });
       }
       
+      // Check if holding already exists
+      const existingHolding = await prisma.holdings.findFirst({
+        where: {
+          symbol: data.symbol,
+          userId: user.id
+        }
+      });
+      
+      if (existingHolding) {
+        return { 
+          success: false, 
+          message: `Holding ${data.symbol} already exists in your portfolio. Please edit the existing holding instead.` 
+        };
+      }
+      
+      // Generate a better company name
+      const companyName = this.generateCompanyName(data.symbol);
+      
       // Create the holding
       const holding = await prisma.holdings.create({
         data: {
           symbol: data.symbol,
-          name: data.name || `${data.symbol} Stock`,
+          name: companyName,
           valueSGD: valueSGD,
           valueUSD: valueUSD,
           valueINR: valueINR,
@@ -308,5 +329,26 @@ export class PortfolioAgent {
       message: analysis,
       confidence: 0.9
     };
+  }
+
+  private static generateCompanyName(symbol: string): string {
+    // Map common symbols to company names
+    const companyNames: Record<string, string> = {
+      'CRCL': 'Circle Internet Financial Inc',
+      'AAPL': 'Apple Inc',
+      'MSFT': 'Microsoft Corporation',
+      'GOOGL': 'Alphabet Inc',
+      'AMZN': 'Amazon.com Inc',
+      'TSLA': 'Tesla Inc',
+      'NVDA': 'NVIDIA Corporation',
+      'META': 'Meta Platforms Inc',
+      'NFLX': 'Netflix Inc',
+      'BTC': 'Bitcoin',
+      'ETH': 'Ethereum',
+      'VUAA': 'Vanguard S&P 500 UCITS ETF',
+      'INDIA': 'iShares MSCI India ETF'
+    };
+    
+    return companyNames[symbol] || `${symbol} Corporation`;
   }
 } 

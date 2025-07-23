@@ -25,6 +25,7 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isExecutingAction, setIsExecutingAction] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -151,28 +152,32 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
   };
 
   const handleConfirmAction = async (pendingAction: any) => {
+    if (isExecutingAction) return; // Prevent duplicate executions
+    
+    setIsExecutingAction(true);
+    
     const action: AgentAction = {
       type: pendingAction.intent,
       data: pendingAction.entities
     };
-  
+
     try {
       const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action })
       });
-  
+
       const result = await response.json();
-  
+
       const actionMessage: AgentMessage = {
         type: 'agent',
         content: result.message,
         timestamp: new Date()
       };
-  
+
       setMessages(prev => [...prev, actionMessage]);
-  
+
       if (result.success && onPortfolioUpdate) {
         onPortfolioUpdate();
       }
@@ -183,6 +188,8 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsExecutingAction(false);
     }
   };
   
@@ -270,13 +277,23 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
                 <div className="mt-3 flex space-x-2">
                   <button
                     onClick={() => handleConfirmAction(message.pendingAction)}
-                    className="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 transition-colors"
+                    disabled={isExecutingAction}
+                    className={`px-3 py-1 rounded text-xs transition-colors ${
+                      isExecutingAction 
+                        ? 'bg-gray-500 text-gray-300 cursor-not-allowed' 
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
                   >
-                    Yes, proceed
+                    {isExecutingAction ? 'Executing...' : 'Yes, proceed'}
                   </button>
                   <button
                     onClick={handleCancelAction}
-                    className="bg-gray-600 text-white px-3 py-1 rounded text-xs hover:bg-gray-700 transition-colors"
+                    disabled={isExecutingAction}
+                    className={`px-3 py-1 rounded text-xs transition-colors ${
+                      isExecutingAction 
+                        ? 'bg-gray-500 text-gray-300 cursor-not-allowed' 
+                        : 'bg-gray-600 text-white hover:bg-gray-700'
+                    }`}
                   >
                     No, cancel
                   </button>
