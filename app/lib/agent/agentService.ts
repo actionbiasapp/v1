@@ -98,13 +98,17 @@ export class PortfolioAgent {
               };
             }
             
-            // If no matches found, continue to normal flow for new holding
-            if (matchResult.suggestedAction === 'create_new') {
-              // Continue to Step 3 for new holding creation
-            } else {
-              // If we've already handled the response above, don't continue
-              break;
+            // If we've already handled the response above (add_to_existing or clarify), don't continue
+            if (matchResult.suggestedAction === 'add_to_existing' || matchResult.suggestedAction === 'clarify') {
+              // This should never be reached due to early returns above, but just in case
+              return {
+                action: 'error',
+                data: null,
+                message: 'Unexpected state in smart matching.',
+                confidence: 0
+              };
             }
+            // If create_new, continue to Step 3 for new holding creation
           }
           
           break;
