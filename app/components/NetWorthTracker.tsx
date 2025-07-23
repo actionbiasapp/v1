@@ -21,8 +21,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 text-sm">
         <p className="font-bold text-white mb-2">{label}</p>
         <p className="text-blue-400">Net Worth: ${data.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-        <p className="text-emerald-400">Market Gains: ${data.marketGains.toLocaleString()}</p>
-        <p className="text-indigo-400">Savings: ${data.savings.toLocaleString()}</p>
+        <p className="text-emerald-400">Market Gains: ${data.marketGains.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+        <p className="text-indigo-400">Savings: ${data.savings.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
       </div>
     );
   }
@@ -67,9 +67,9 @@ export default function NetWorthTracker({ yearlyData, portfolioTotal }: { yearly
           <p className="text-sm text-slate-400">Your historical net worth, savings, and market performance.</p>
         </div>
         <div className="flex gap-4 text-xs">
-          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-cyan-500 rounded-sm"></div><span className="text-slate-400">Net Worth</span></div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-green-500 rounded-sm"></div><span className="text-slate-400">Market Gains</span></div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-indigo-500 rounded-sm"></div><span className="text-slate-400">Savings</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-cyan-500 rounded-full"></div><span className="text-slate-400">Net Worth</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-green-500 rounded-full"></div><span className="text-slate-400">Market Gains</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 bg-indigo-500 rounded-full"></div><span className="text-slate-400">Savings</span></div>
         </div>
       </div>
       <div className="h-80">

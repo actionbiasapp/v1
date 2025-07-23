@@ -21,7 +21,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
         {payload.map((pld: any) => (
           <div key={pld.dataKey} style={{ color: pld.color }} className="flex justify-between items-center text-xs">
             <span className="font-semibold">{pld.name}</span>
-            <span className="font-bold ml-4">${pld.value.toLocaleString()}</span>
+            <span className="font-bold ml-4">${pld.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
           </div>
         ))}
       </div>

@@ -158,62 +158,74 @@ const IndividualHoldingCard = React.memo(({
 
   return (
     <div className="detailed-holding" onClick={handleEdit}>
-      <div className="flex justify-between items-center w-full">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span>
-              {getAssetIcon(holding.symbol)} {holding.symbol}
-              {holding.quantity ? ` (${holding.quantity})` : ''}
-              {holding.priceSource !== 'manual' && (
-                <span className={`inline-block w-1.5 h-1.5 rounded-full ml-1 align-middle ${
-                  holding.priceUpdated && (new Date().getTime() - new Date(holding.priceUpdated).getTime() < 24 * 60 * 60 * 1000)
-                    ? 'bg-green-400' // bright green
-                    : 'bg-green-950' // much darker green for dull
-                }`} style={{ boxShadow: '0 0 0 1px #222' }} title={
-                  holding.priceUpdated && (new Date().getTime() - new Date(holding.priceUpdated).getTime() < 24 * 60 * 60 * 1000)
-                    ? 'Auto-updated in last 24h'
-                    : 'Auto-updated (not in last 24h)'
-                }></span>
+      <div className="flex justify-between items-start w-full gap-4">
+        <div className="flex-1 min-w-0">
+          {/* Header with symbol and status */}
+          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+            <div className="flex items-center gap-1 leading-none">
+              <span className="font-medium text-white text-sm leading-none align-middle">
+                {getAssetIcon(holding.symbol)} {holding.symbol}
+              </span>
+              {holding.quantity && (
+                <span className="text-slate-300 text-sm font-medium leading-none align-middle">
+                  ({holding.quantity})
+                </span>
               )}
-            </span>
+            </div>
+            {holding.priceSource !== 'manual' && (
+              <span className={`inline-block w-1 h-1 rounded-full align-middle ${
+                holding.priceUpdated && (new Date().getTime() - new Date(holding.priceUpdated).getTime() < 24 * 60 * 60 * 1000)
+                  ? 'bg-green-400' // bright green
+                  : 'bg-green-950' // much darker green for dull
+              }`} style={{ boxShadow: '0 0 0 1px #222' }} title={
+                holding.priceUpdated && (new Date().getTime() - new Date(holding.priceUpdated).getTime() < 24 * 60 * 60 * 1000)
+                  ? 'Auto-updated in last 24h'
+                  : 'Auto-updated (not in last 24h)'
+              }></span>
+            )}
             <span className="text-slate-400 text-xs">({holding.location})</span>
           </div>
-          <div className="text-slate-400 text-xs">{holding.name}</div>
-          <div className="flex flex-col gap-1 mt-1">
-            {holding.unitPrice !== undefined && (
-              <span className="text-xs text-slate-400">Buy Price: {formatK(holding.unitPrice)} {holding.entryCurrency || 'SGD'}</span>
-            )}
-            {holding.currentUnitPrice !== undefined && (
-              <span className="text-xs text-slate-400">
-                Current Price: {formatK(holding.currentUnitPrice)} {holding.entryCurrency || 'SGD'}
-                {holding.entryCurrency !== displayCurrency && exchangeRates && (
-                  <span className="ml-1">
-                    ({formatK(convertCurrency(holding.currentUnitPrice, holding.entryCurrency as CurrencyCode, displayCurrency, exchangeRates))} {displayCurrency})
-                  </span>
+          
+          {/* Company name */}
+          <div className="text-slate-300 text-xs mb-1.5">{holding.name}</div>
+          
+          {/* Price information - hidden on mobile, compact on desktop */}
+          <div className="hidden md:block">
+            {holding.unitPrice !== undefined && holding.currentUnitPrice !== undefined && (
+              <div className="flex items-center gap-4 text-xs">
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-400">Buy:</span>
+                  <span className="text-white font-medium">{formatK(holding.unitPrice)} {holding.entryCurrency || 'SGD'}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-400">Current:</span>
+                  <span className="text-white font-medium">{formatK(holding.currentUnitPrice)} {holding.entryCurrency || 'SGD'}</span>
+                </div>
+                {hasData && (
+                  <div className={`flex items-center gap-1 ${
+                    profitLoss >= 0 ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    <span>{profitLoss >= 0 ? '+' : ''}{formatK(profitLoss)} {displayCurrency}</span>
+                    <span>({profitLoss >= 0 ? '+' : ''}{profitLossPercent.toFixed(1)}%)</span>
+                  </div>
                 )}
-              </span>
-            )}
-            {hasData && (
-              <span className={`text-xs font-medium ${
-                profitLoss >= 0 ? 'text-green-400' : 'text-red-400'
-              }`}>
-                {profitLoss >= 0 ? '+' : ''}{formatK(profitLoss)} {displayCurrency} ({profitLoss >= 0 ? '+' : ''}{profitLossPercent.toFixed(1)}%)
-              </span>
+              </div>
             )}
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
+        {/* Right side - values and actions */}
+        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
           <div className="text-right">
-            <div className="text-white">
+            <div className="text-white font-medium text-xs">
               {mainDisplayK} {displayCurrency}
             </div>
-            <div className="text-xs text-slate-400">
+            <div className="text-slate-400 text-xs">
               {percentageOfCategory}%
             </div>
           </div>
           
-          <div onClick={e => e.stopPropagation()}>
+          <div onClick={e => e.stopPropagation()} className="flex-shrink-0">
             <ActionButtons
               onEdit={handleEdit}
               onDelete={handleDelete}

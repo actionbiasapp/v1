@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { config } from '@/app/lib/config';
 
 const prisma = new PrismaClient();
-const FMP_API_KEY = process.env.FMP_API_KEY || '';
+const FMP_API_KEY = config.FMP_API_KEY;
 const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
-const ALPHA_VANTAGE_KEY = process.env.ALPHA_VANTAGE_API_KEY || 'demo';
+const ALPHA_VANTAGE_KEY = config.ALPHA_VANTAGE_API_KEY;
 
 // Define the source type union to include 'yesterday'
 type PriceSource = 'fmp' | 'alpha' | 'coingecko' | 'manual' | 'yesterday';

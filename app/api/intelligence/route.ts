@@ -6,6 +6,7 @@ import {
   convertTaxIntelligenceToActions, 
   estimateIncomeFromPortfolio 
 } from '@/app/lib/singaporeTax';
+import { config } from '@/app/lib/config';
 
 const prisma = new PrismaClient();
 const rateLimits = new Map<string, { count: number; resetTime: number }>();
@@ -235,7 +236,7 @@ export async function GET() {
     // Try to get user's custom targets from financial profile API
     let userTargets;
     try {
-      const profileResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/financial-profile`);
+              const profileResponse = await fetch(`${config.NEXTAUTH_URL}/api/financial-profile`);
       if (profileResponse.ok) {
         const profileData = await profileResponse.json();
         if (profileData.success && profileData.allocationTargets) {
