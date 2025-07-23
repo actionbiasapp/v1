@@ -98,6 +98,28 @@ export class PortfolioAgent {
               };
             }
             
+            // If creating new holding and we have FMP data, show enhanced confirmation
+            if (matchResult.suggestedAction === 'create_new' && matchResult.fmpData) {
+              return {
+                action: 'confirm',
+                data: {
+                  intent: 'add_holding',
+                  entities: {
+                    ...extractedData,
+                    symbol: matchResult.fmpData.symbol,
+                    name: matchResult.fmpData.name,
+                    unitPrice: extractedData.unitPrice || matchResult.fmpData.price,
+                    exchange: matchResult.fmpData.exchange,
+                    currency: matchResult.fmpData.currency
+                  },
+                  fmpData: matchResult.fmpData,
+                  confidence: intentResult.confidence
+                },
+                message: `I found ${matchResult.fmpData.name} (${matchResult.fmpData.symbol}) on ${matchResult.fmpData.exchange}. Current price: $${matchResult.fmpData.price}. Would you like to add ${extractedData.quantity} shares at $${extractedData.unitPrice || matchResult.fmpData.price}?`,
+                confidence: validation.confidence
+              };
+            }
+            
             // If we've already handled the response above (add_to_existing or clarify), don't continue
             if (matchResult.suggestedAction === 'add_to_existing' || matchResult.suggestedAction === 'clarify') {
               // This should never be reached due to early returns above, but just in case

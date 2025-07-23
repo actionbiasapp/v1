@@ -1,164 +1,264 @@
-// app/lib/agent/smartMatching.ts
-import { PrismaClient } from '@prisma/client';
+// app/lib/agent/smartMatching.ts - Enhanced Smart Holding Matching with FMP API Integration
 
-const prisma = new PrismaClient();
+import { lookupNewCompany, validateNewSymbol, type FMPQuote } from '@/app/lib/fmpApi';
 
-export interface HoldingMatch {
+export interface Holding {
   id: string;
   symbol: string;
   name: string;
+  category: string;
+  location: string;
+  quantity: number;
+  costBasis: number;
+  valueSGD: number;
+  valueUSD: number;
+  valueINR: number;
+  entryCurrency: string;
+}
+
+export interface MatchResult {
+  symbol: string;
+  name: string;
   confidence: number;
-  matchType: 'exact_symbol' | 'similar_symbol' | 'similar_name' | 'new_holding';
+  id?: string;
 }
 
 export interface SmartMatchResult {
-  matches: HoldingMatch[];
-  bestMatch: HoldingMatch | null;
-  isNewHolding: boolean;
   suggestedAction: 'add_to_existing' | 'create_new' | 'clarify';
+  bestMatch?: MatchResult;
+  matches: MatchResult[];
+  fmpData?: {
+    symbol: string;
+    name: string;
+    price: number;
+    exchange: string;
+    currency: string;
+    confidence: number;
+  };
 }
 
 export class SmartHoldingMatcher {
-  static async findMatches(symbol: string, existingHoldings: any[]): Promise<SmartMatchResult> {
-    const normalizedSymbol = symbol.toUpperCase().trim();
+  static async findMatches(
+    symbol: string, 
+    currentHoldings: Holding[]
+  ): Promise<SmartMatchResult> {
+    const normalizedSymbol = symbol.toUpperCase();
     
-    // 1. Exact symbol match
-    const exactSymbolMatch = existingHoldings.find(h => 
-      h.symbol.toUpperCase() === normalizedSymbol
+    // Step 1: Check for exact symbol matches
+    const exactMatches = currentHoldings.filter(
+      holding => holding.symbol.toUpperCase() === normalizedSymbol
     );
     
-    if (exactSymbolMatch) {
+    if (exactMatches.length === 1) {
       return {
-        matches: [{
-          id: exactSymbolMatch.id,
-          symbol: exactSymbolMatch.symbol,
-          name: exactSymbolMatch.name,
-          confidence: 1.0,
-          matchType: 'exact_symbol'
-        }],
+        suggestedAction: 'add_to_existing',
         bestMatch: {
-          id: exactSymbolMatch.id,
-          symbol: exactSymbolMatch.symbol,
-          name: exactSymbolMatch.name,
-          confidence: 1.0,
-          matchType: 'exact_symbol'
+          id: exactMatches[0].id,
+          symbol: exactMatches[0].symbol,
+          name: exactMatches[0].name,
+          confidence: 1.0
         },
-        isNewHolding: false,
-        suggestedAction: 'add_to_existing'
+        matches: [{
+          id: exactMatches[0].id,
+          symbol: exactMatches[0].symbol,
+          name: exactMatches[0].name,
+          confidence: 1.0
+        }]
       };
     }
     
-    // 2. Similar symbol matches (fuzzy matching)
-    const similarSymbolMatches = existingHoldings
-      .filter(h => this.calculateSymbolSimilarity(normalizedSymbol, h.symbol.toUpperCase()) > 0.7)
-      .map(h => ({
-        id: h.id,
-        symbol: h.symbol,
-        name: h.name,
-        confidence: this.calculateSymbolSimilarity(normalizedSymbol, h.symbol.toUpperCase()),
-        matchType: 'similar_symbol' as const
-      }))
-      .sort((a, b) => b.confidence - a.confidence);
+    // Step 2: Check for similar symbol matches (fuzzy matching)
+    const similarMatches = currentHoldings.filter(holding => {
+      const holdingSymbol = holding.symbol.toUpperCase();
+      return this.calculateSymbolSimilarity(normalizedSymbol, holdingSymbol) > 0.7;
+    });
     
-    // 3. Similar name matches (for cases like "Circle Internet Group" vs "Circle Internet Financial")
-    const similarNameMatches = existingHoldings
-      .filter(h => this.calculateNameSimilarity(normalizedSymbol, h.name) > 0.6)
-      .map(h => ({
-        id: h.id,
-        symbol: h.symbol,
-        name: h.name,
-        confidence: this.calculateNameSimilarity(normalizedSymbol, h.name),
-        matchType: 'similar_name' as const
-      }))
-      .sort((a, b) => b.confidence - a.confidence);
-    
-    // Combine and deduplicate matches
-    const allMatches = [...similarSymbolMatches, ...similarNameMatches]
-      .filter((match, index, arr) => 
-        arr.findIndex(m => m.id === match.id) === index
-      )
-      .sort((a, b) => b.confidence - a.confidence);
-    
-    const bestMatch = allMatches[0];
-    
-    if (bestMatch && bestMatch.confidence > 0.8) {
+    if (similarMatches.length > 0) {
+      const matches = similarMatches.map(holding => ({
+        id: holding.id,
+        symbol: holding.symbol,
+        name: holding.name,
+        confidence: this.calculateSymbolSimilarity(normalizedSymbol, holding.symbol.toUpperCase())
+      })).sort((a, b) => b.confidence - a.confidence);
+      
+      if (matches.length === 1 && matches[0].confidence > 0.8) {
+        return {
+          suggestedAction: 'add_to_existing',
+          bestMatch: matches[0],
+          matches
+        };
+      }
+      
       return {
-        matches: allMatches,
-        bestMatch,
-        isNewHolding: false,
-        suggestedAction: 'add_to_existing'
-      };
-    } else if (bestMatch && bestMatch.confidence > 0.6) {
-      return {
-        matches: allMatches,
-        bestMatch,
-        isNewHolding: false,
-        suggestedAction: 'clarify'
-      };
-    } else {
-      return {
-        matches: [],
-        bestMatch: null,
-        isNewHolding: true,
-        suggestedAction: 'create_new'
+        suggestedAction: 'clarify',
+        matches
       };
     }
+    
+    // Step 3: Check for name similarity matches
+    const nameMatches = currentHoldings.filter(holding => {
+      const similarity = this.calculateNameSimilarity(symbol, holding.name);
+      return similarity > 0.6;
+    });
+    
+    if (nameMatches.length > 0) {
+      const matches = nameMatches.map(holding => ({
+        id: holding.id,
+        symbol: holding.symbol,
+        name: holding.name,
+        confidence: this.calculateNameSimilarity(symbol, holding.name)
+      })).sort((a, b) => b.confidence - a.confidence);
+      
+      if (matches.length === 1 && matches[0].confidence > 0.8) {
+        return {
+          suggestedAction: 'add_to_existing',
+          bestMatch: matches[0],
+          matches
+        };
+      }
+      
+      return {
+        suggestedAction: 'clarify',
+        matches
+      };
+    }
+    
+    // Step 4: If no matches found, try FMP API for new company lookup
+    try {
+      const fmpData = await lookupNewCompany(symbol);
+      
+      if (fmpData) {
+        return {
+          suggestedAction: 'create_new',
+          matches: [],
+          fmpData
+        };
+      }
+    } catch (error) {
+      console.error('FMP API lookup failed:', error);
+    }
+    
+    // Step 5: Default to create new (even without FMP data)
+    return {
+      suggestedAction: 'create_new',
+      matches: []
+    };
   }
   
   private static calculateSymbolSimilarity(symbol1: string, symbol2: string): number {
     if (symbol1 === symbol2) return 1.0;
     
-    // Simple similarity based on common characters
-    const set1 = new Set(symbol1.split(''));
-    const set2 = new Set(symbol2.split(''));
-    const intersection = new Set([...set1].filter(x => set2.has(x)));
-    const union = new Set([...set1, ...set2]);
+    // Handle common variations
+    const variations = [
+      { from: 'BTC', to: 'BITCOIN' },
+      { from: 'ETH', to: 'ETHEREUM' },
+      { from: 'USDC', to: 'USD COIN' },
+      { from: 'WBTC', to: 'WRAPPED BITCOIN' }
+    ];
     
-    return intersection.size / union.size;
-  }
-  
-  private static calculateNameSimilarity(symbol: string, companyName: string): number {
-    const normalizedName = companyName.toLowerCase();
-    const normalizedSymbol = symbol.toLowerCase();
-    
-    // Check if symbol appears in company name
-    if (normalizedName.includes(normalizedSymbol)) {
-      return 0.8;
+    for (const variation of variations) {
+      if (symbol1 === variation.from && symbol2.includes(variation.to)) return 0.9;
+      if (symbol2 === variation.from && symbol1.includes(variation.to)) return 0.9;
     }
     
-    // Check for common words (like "Circle", "Internet", "Group", "Financial")
-    const nameWords = normalizedName.split(/\s+/);
-    const symbolWords = normalizedSymbol.split(/\s+/);
+    // Simple string similarity
+    const longer = symbol1.length > symbol2.length ? symbol1 : symbol2;
+    const shorter = symbol1.length > symbol2.length ? symbol2 : symbol1;
     
-    const commonWords = nameWords.filter(word => 
-      symbolWords.some(symbolWord => 
-        word.includes(symbolWord) || symbolWord.includes(word)
-      )
+    if (longer.length === 0) return 1.0;
+    
+    const editDistance = this.levenshteinDistance(longer, shorter);
+    return (longer.length - editDistance) / longer.length;
+  }
+  
+  private static calculateNameSimilarity(query: string, companyName: string): number {
+    const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normalizedName = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    
+    if (normalizedName.includes(normalizedQuery) || normalizedQuery.includes(normalizedName)) {
+      return 0.9;
+    }
+    
+    // Check for word overlap
+    const queryWords = normalizedQuery.split(/\s+/);
+    const nameWords = normalizedName.split(/\s+/);
+    
+    const commonWords = queryWords.filter(word => 
+      nameWords.some(nameWord => nameWord.includes(word) || word.includes(nameWord))
     );
     
     if (commonWords.length > 0) {
-      return Math.min(0.7, commonWords.length * 0.2);
+      return Math.min(0.8, commonWords.length / Math.max(queryWords.length, nameWords.length));
     }
     
-    return 0.0;
+    return 0;
   }
   
-  static async getCompanyInfo(symbol: string): Promise<{ name: string; description?: string } | null> {
+  private static levenshteinDistance(str1: string, str2: string): number {
+    const matrix = [];
+    
+    for (let i = 0; i <= str2.length; i++) {
+      matrix[i] = [i];
+    }
+    
+    for (let j = 0; j <= str1.length; j++) {
+      matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= str2.length; i++) {
+      for (let j = 1; j <= str1.length; j++) {
+        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+    
+    return matrix[str2.length][str1.length];
+  }
+  
+  // Enhanced method to validate new symbols with FMP API
+  static async validateNewSymbol(symbol: string): Promise<{
+    isValid: boolean;
+    price?: number;
+    name?: string;
+    exchange?: string;
+    confidence?: number;
+  }> {
     try {
-      // For now, return a basic mapping - in Phase 2, this will call FMP API
-      const companyMappings: Record<string, { name: string; description?: string }> = {
-        'CRCL': { name: 'Circle Internet Financial Inc', description: 'Digital currency and financial services company' },
-        'AAPL': { name: 'Apple Inc', description: 'Technology company specializing in consumer electronics' },
-        'MSFT': { name: 'Microsoft Corporation', description: 'Technology company focused on software and cloud services' },
-        'GOOGL': { name: 'Alphabet Inc', description: 'Technology conglomerate and parent company of Google' },
-        'TSLA': { name: 'Tesla Inc', description: 'Electric vehicle and clean energy company' },
-        'NVDA': { name: 'NVIDIA Corporation', description: 'Graphics processing and AI technology company' }
-      };
+      const validation = await validateNewSymbol(symbol);
       
-      return companyMappings[symbol.toUpperCase()] || null;
+      if (validation.isValid) {
+        return {
+          isValid: true,
+          price: validation.price,
+          name: validation.name,
+          exchange: validation.exchange,
+          confidence: 0.95
+        };
+      }
+      
+      // Try company name lookup
+      const fmpData = await lookupNewCompany(symbol);
+      if (fmpData) {
+        return {
+          isValid: true,
+          price: fmpData.price,
+          name: fmpData.name,
+          exchange: fmpData.exchange,
+          confidence: fmpData.confidence
+        };
+      }
+      
+      return { isValid: false };
     } catch (error) {
-      console.error('Error fetching company info:', error);
-      return null;
+      console.error('Symbol validation failed:', error);
+      return { isValid: false };
     }
   }
 } 
