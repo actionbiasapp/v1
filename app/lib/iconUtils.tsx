@@ -1,4 +1,5 @@
 // app/lib/iconUtils.ts - Icon utilities with fallback support
+import React from 'react';
 
 // SVG icon components for better cross-platform compatibility
 export const CategoryIcons = {

@@ -31,12 +31,28 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
   const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only scroll if we're near the bottom to avoid disrupting user's view
+    const chatContainer = messagesEndRef.current?.parentElement;
+    if (chatContainer) {
+      const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 100;
+      if (isNearBottom) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
   };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Focus input when chat is opened
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen]);
 
   const sendMessage = async (message: string) => {
     if (!message.trim() || isProcessing) return;
@@ -50,6 +66,9 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsProcessing(true);
+    
+    // Store the input ref to restore focus later
+    const currentInputRef = inputRef.current;
 
     try {
       const response = await fetch('/api/agent', {
@@ -61,21 +80,13 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
       const result = await response.json();
 
       if (result.success) {
-        const agentMessage: AgentMessage = {
-          type: 'agent',
-          content: result.message,
-          data: result.data,
-          suggestions: result.suggestions,
-          timestamp: new Date()
-        };
-
-        setMessages(prev => [...prev, agentMessage]);
-
-        // Handle confirmation actions inline
+        // Handle confirmation actions with a single message
         if (result.action === 'confirm' && result.data) {
           const confirmationMessage: AgentMessage = {
             type: 'agent',
             content: `${result.message}\n\nWould you like me to proceed?`,
+            data: result.data,
+            suggestions: result.suggestions,
             pendingAction: {
               intent: result.data.intent,
               entities: result.data.entities,
@@ -84,6 +95,25 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
             timestamp: new Date()
           };
           setMessages(prev => [...prev, confirmationMessage]);
+        } else if (result.action === 'clarify') {
+          // Handle clarification requests
+          const clarificationMessage: AgentMessage = {
+            type: 'agent',
+            content: result.message,
+            data: result.data,
+            suggestions: result.suggestions,
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, clarificationMessage]);
+        } else {
+          const agentMessage: AgentMessage = {
+            type: 'agent',
+            content: result.message,
+            data: result.data,
+            suggestions: result.suggestions,
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, agentMessage]);
         }
       } else {
         const errorMessage: AgentMessage = {
@@ -102,6 +132,36 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsProcessing(false);
+      
+      // More aggressive focus restoration with multiple strategies
+      const restoreFocus = () => {
+        // Try the stored ref first
+        if (currentInputRef && currentInputRef.focus) {
+          currentInputRef.focus();
+          return true;
+        }
+        
+        // Try the current ref
+        if (inputRef.current && inputRef.current.focus) {
+          inputRef.current.focus();
+          return true;
+        }
+        
+        // Try finding the input by selector as last resort
+        const inputElement = document.querySelector('input[type="text"]') as HTMLInputElement;
+        if (inputElement && inputElement.focus) {
+          inputElement.focus();
+          return true;
+        }
+        
+        return false;
+      };
+      
+      // Multiple attempts with increasing delays
+      setTimeout(() => restoreFocus(), 50);
+      setTimeout(() => restoreFocus(), 150);
+      setTimeout(() => restoreFocus(), 300);
+      setTimeout(() => restoreFocus(), 600);
     }
   };
 
@@ -131,6 +191,11 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
       if (result.success && onPortfolioUpdate) {
         onPortfolioUpdate();
       }
+      
+      // Restore focus after action execution
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     } catch (error) {
       const errorMessage: AgentMessage = {
         type: 'agent',
@@ -138,6 +203,11 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
+      
+      // Restore focus after error too
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -181,6 +251,11 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
       if (result.success && onPortfolioUpdate) {
         onPortfolioUpdate();
       }
+      
+      // Restore focus after confirmation action
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     } catch (error) {
       const errorMessage: AgentMessage = {
         type: 'agent',
@@ -188,8 +263,18 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
+      
+      // Restore focus after error too
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     } finally {
       setIsExecutingAction(false);
+      
+      // Final focus attempt
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 200);
     }
   };
   
@@ -200,13 +285,22 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
       timestamp: new Date()
     };
     setMessages(prev => [...prev, cancelMessage]);
+    
+    // Restore focus after cancel
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
   };
 
   const suggestions = [
-    'Add 100 shares of Apple at $150',
+    'Show my portfolio summary',
+    'What\'s my biggest holding?',
+    'Show allocation gaps',
+    'What\'s my total value?',
+    'Show Core holdings only',
+    'Add 100 shares of [SYMBOL] at $150',
     '2023 income was $120,000',
-    'How is my portfolio performing?',
-    'Delete Tesla holding'
+    'How is my portfolio performing?'
   ];
 
   if (!isOpen) {
@@ -214,12 +308,11 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
       <div className="fixed bottom-4 right-4 z-50">
         <button
           onClick={() => setIsOpen(true)}
-          className="bg-blue-600 text-white p-3 rounded-full shadow-lg hover:bg-blue-700 transition-colors"
-          title="Ask Agent"
+          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white p-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
+          title="Ask Portfolio Agent"
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
+          <span className="text-lg">🤖</span>
+          <span className="font-medium text-sm hidden sm:inline">Agent</span>
         </button>
       </div>
     );

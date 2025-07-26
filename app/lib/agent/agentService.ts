@@ -9,9 +9,11 @@ import {
   ExtractedHoldingData,
   ExtractedYearlyData
 } from './types';
-import { IntentRecognition } from './intentRecognition';
+import { LLMService } from './llmService';
+import { QuickQueryHandler } from './quickQueries';
 import { DataValidator } from './validator';
 import { SmartHoldingMatcher, SmartMatchResult } from './smartMatching';
+import { type CurrencyCode } from '@/app/lib/currency';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -21,158 +23,120 @@ export class PortfolioAgent {
     try {
       const { message, context } = request;
       
-      // Step 1: Intent Recognition
-      const intentResult = IntentRecognition.recognizeIntent(message);
+      // First, try quick queries (no OpenAI cost)
+      const quickResult = await QuickQueryHandler.handleQuery(
+        message,
+        context.currentHoldings || [],
+        (context.displayCurrency as CurrencyCode) || 'SGD',
+        null // exchangeRates can be added later
+      );
       
-      if (intentResult.intent === 'unknown') {
+      if (quickResult.success) {
         return {
-          action: 'clarify',
-          data: null,
-          message: 'I didn\'t understand that. Try saying something like "Add 100 shares of AAPL" or "2023 income was $120k"',
-          confidence: 0,
-          suggestions: [
-            'Add 100 shares of AAPL at $150',
-            '2023 income was $120,000',
-            'Delete TSLA holding',
-            'How is my portfolio performing?'
-          ]
+          action: 'confirm',
+          data: quickResult.data,
+          message: quickResult.message,
+          confidence: 1.0,
+          suggestions: ['Show my portfolio summary', 'What\'s my biggest holding?', 'Show allocation gaps']
         };
       }
       
-      // Step 2: Data Extraction
-      let extractedData: any = {};
-      let validation: ValidationResult;
+      // Use LLM for intent recognition and data extraction
+      const llmResponse = await LLMService.processWithFallback(message, context);
       
-      switch (intentResult.intent) {
-        case 'add_holding':
-        case 'edit_holding':
-        case 'delete_holding':
-          extractedData = IntentRecognition.extractHoldingData(message);
-          validation = await DataValidator.validateHoldingData(extractedData, context);
-          
-          // For add_holding, perform smart matching
-          if (intentResult.intent === 'add_holding' && validation.isValid) {
-            const matchResult = await SmartHoldingMatcher.findMatches(
-              extractedData.symbol, 
-              context.currentHoldings || []
-            );
+      // If LLM couldn't understand, return the clarification response
+      if (llmResponse.action === 'clarify' || llmResponse.action === 'error') {
+        return llmResponse;
+      }
+      
+      // For confirmation actions, validate the extracted data
+      if (llmResponse.action === 'confirm' && llmResponse.data) {
+        const { intent, entities } = llmResponse.data;
+        
+        // Validate based on intent type
+        let validation: ValidationResult;
+        
+        switch (intent) {
+          case 'add_holding':
+          case 'edit_holding':
+          case 'delete_holding':
+            validation = await DataValidator.validateHoldingData(entities, context);
             
-            // If we found a good match, suggest adding to existing holding
-            if (matchResult.suggestedAction === 'add_to_existing' && matchResult.bestMatch) {
-              return {
-                action: 'confirm',
-                data: {
-                  intent: 'add_to_existing_holding',
-                  entities: {
-                    ...extractedData,
-                    existingHoldingId: matchResult.bestMatch.id,
-                    existingHoldingName: matchResult.bestMatch.name,
-                    matchConfidence: matchResult.bestMatch.confidence
-                  },
-                  confidence: intentResult.confidence
-                },
-                message: `I found an existing holding: ${matchResult.bestMatch.name} (${matchResult.bestMatch.symbol}). Would you like to add ${extractedData.quantity} shares at $${extractedData.unitPrice} to this existing position?`,
-                confidence: validation.confidence
-              };
-            }
-            
-            // If we need clarification, show options
-            if (matchResult.suggestedAction === 'clarify' && matchResult.matches.length > 0) {
-              const options = matchResult.matches.map(match => 
-                `${match.name} (${match.symbol}) - ${Math.round(match.confidence * 100)}% match`
+            // For add_holding, perform smart matching
+            if (intent === 'add_holding' && validation.isValid) {
+              const matchResult = await SmartHoldingMatcher.findMatches(
+                entities.symbol, 
+                context.currentHoldings || []
               );
               
-              return {
-                action: 'clarify',
-                data: {
-                  intent: 'add_holding',
-                  entities: extractedData,
-                  matches: matchResult.matches
-                },
-                message: `I found similar holdings in your portfolio. Which one did you mean?\n\n${options.join('\n')}\n\nOr is this a new holding?`,
-                confidence: validation.confidence,
-                suggestions: [
-                  ...options,
-                  'This is a new holding'
-                ]
-              };
-            }
-            
-            // If creating new holding and we have FMP data, show enhanced confirmation
-            if (matchResult.suggestedAction === 'create_new' && matchResult.fmpData) {
-              return {
-                action: 'confirm',
-                data: {
-                  intent: 'add_holding',
-                  entities: {
-                    ...extractedData,
-                    symbol: matchResult.fmpData.symbol,
-                    name: matchResult.fmpData.name,
-                    unitPrice: extractedData.unitPrice || matchResult.fmpData.price,
-                    exchange: matchResult.fmpData.exchange,
-                    currency: matchResult.fmpData.currency
+              // If we found a good match, suggest adding to existing holding
+              if (matchResult.suggestedAction === 'add_to_existing' && matchResult.bestMatch) {
+                return {
+                  action: 'confirm',
+                  data: {
+                    intent: 'add_to_existing_holding',
+                    entities: {
+                      ...entities,
+                      existingHoldingId: matchResult.bestMatch.id,
+                      existingHoldingName: matchResult.bestMatch.name,
+                      matchConfidence: matchResult.bestMatch.confidence
+                    },
+                    confidence: llmResponse.confidence
                   },
-                  fmpData: matchResult.fmpData,
-                  confidence: intentResult.confidence
-                },
-                message: `I found ${matchResult.fmpData.name} (${matchResult.fmpData.symbol}) on ${matchResult.fmpData.exchange}. Current price: $${matchResult.fmpData.price}. Would you like to add ${extractedData.quantity} shares at $${extractedData.unitPrice || matchResult.fmpData.price}?`,
-                confidence: validation.confidence
-              };
+                  message: `I found an existing holding: ${matchResult.bestMatch.name} (${matchResult.bestMatch.symbol}). Would you like to add ${entities.quantity} shares at $${entities.unitPrice} to this existing position?`,
+                  confidence: validation.confidence
+                };
+              }
+              
+              // If we need clarification, show options
+              if (matchResult.suggestedAction === 'clarify' && matchResult.matches.length > 0) {
+                const options = matchResult.matches.map(match => 
+                  `${match.name} (${match.symbol}) - ${Math.round(match.confidence * 100)}% match`
+                );
+                
+                return {
+                  action: 'clarify',
+                  data: {
+                    intent: 'add_holding',
+                    entities: entities,
+                    matches: matchResult.matches
+                  },
+                  message: `I found similar holdings in your portfolio. Which one did you mean?\n\n${options.join('\n')}\n\nOr is this a new holding?`,
+                  confidence: validation.confidence,
+                  suggestions: [
+                    ...options,
+                    'This is a new holding'
+                  ]
+                };
+              }
             }
+            break;
             
-            // If we've already handled the response above (add_to_existing or clarify), don't continue
-            if (matchResult.suggestedAction === 'add_to_existing' || matchResult.suggestedAction === 'clarify') {
-              // This should never be reached due to early returns above, but just in case
-              return {
-                action: 'error',
-                data: null,
-                message: 'Unexpected state in smart matching.',
-                confidence: 0
-              };
-            }
-            // If create_new, continue to Step 3 for new holding creation
-          }
-          
-          break;
-          
-        case 'add_yearly_data':
-          extractedData = IntentRecognition.extractYearlyData(message);
-          validation = await DataValidator.validateYearlyData(extractedData, context);
-          break;
-          
-        case 'portfolio_analysis':
-          return this.generatePortfolioAnalysis(context);
-          
-        default:
+          case 'add_yearly_data':
+            validation = await DataValidator.validateYearlyData(entities, context);
+            break;
+            
+          case 'portfolio_analysis':
+            return this.generatePortfolioAnalysis(context);
+            
+          default:
+            return llmResponse;
+        }
+        
+        // If validation failed, return clarification
+        if (!validation.isValid) {
           return {
             action: 'clarify',
             data: null,
-            message: 'I\'m not sure how to handle that request yet.',
-            confidence: 0
+            message: DataValidator.generateClarificationMessage(validation.errors, validation.warnings),
+            confidence: validation.confidence,
+            suggestions: validation.suggestions
           };
+        }
       }
       
-      // Step 3: Generate Response
-      if (validation.isValid) {
-        return {
-          action: 'confirm',
-          data: {
-            intent: intentResult.intent,
-            entities: extractedData,
-            confidence: intentResult.confidence
-          },
-          message: DataValidator.generateConfirmationMessage(extractedData, intentResult.intent),
-          confidence: validation.confidence
-        };
-      } else {
-        return {
-          action: 'clarify',
-          data: null,
-          message: DataValidator.generateClarificationMessage(validation.errors, validation.warnings),
-          confidence: validation.confidence,
-          suggestions: validation.suggestions
-        };
-      }
+      // Return the LLM response (either confirmation or analysis)
+      return llmResponse;
       
     } catch (error) {
       console.error('Agent processing error:', error);
@@ -191,6 +155,12 @@ export class PortfolioAgent {
         case 'add_holding':
           return await this.executeAddHolding(action.data);
           
+        case 'reduce_holding':
+          return await this.executeReduceHolding(action.data);
+          
+        case 'increase_holding':
+          return await this.executeIncreaseHolding(action.data);
+          
         case 'add_to_existing_holding':
           return await this.executeAddToExistingHolding(action.data);
           
@@ -202,6 +172,10 @@ export class PortfolioAgent {
           
         case 'add_yearly_data':
           return await this.executeAddYearlyData(action.data);
+          
+        case 'portfolio_analysis':
+          const analysis = this.generatePortfolioAnalysis(action.data);
+          return { success: true, message: analysis.message, data: analysis.data };
           
         default:
           return { success: false, message: 'Action not implemented yet' };
@@ -371,13 +345,238 @@ export class PortfolioAgent {
   }
   
   private static async executeEditHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
-    // For now, return a placeholder - we'll need to find the holding ID first
-    return { success: false, message: 'Edit holding not implemented yet' };
+    try {
+      // Get or create user (for testing - using default user)
+      let user = await prisma.user.findFirst({
+        where: { id: 'default-user' }
+      });
+      
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            id: 'default-user',
+            email: 'default@example.com',
+            name: 'Default User'
+          }
+        });
+      }
+
+      // Find the existing holding by exact symbol
+      const holding = await prisma.holdings.findFirst({
+        where: {
+          symbol: data.symbol
+        }
+      });
+
+      if (!holding) {
+        return { 
+          success: false, 
+          message: `No holding found with symbol ${data.symbol}. Please check the symbol and try again.` 
+        };
+      }
+
+      // Update the holding with new values
+      const updateData: any = {};
+      
+      // Handle buy price (unitPrice) updates
+      if (data.unitPrice !== undefined) {
+        updateData.unitPrice = data.unitPrice;
+        // Recalculate values based on new unit price
+        const quantity = Number(holding.quantity) || 0;
+        updateData.valueUSD = quantity * data.unitPrice;
+        updateData.valueSGD = quantity * data.unitPrice * 1.35; // Approximate SGD conversion
+        updateData.valueINR = quantity * data.unitPrice * 83; // Approximate INR conversion
+      }
+      
+      // Handle current market price updates
+      if (data.currentUnitPrice !== undefined) {
+        updateData.currentUnitPrice = data.currentUnitPrice;
+        updateData.priceUpdated = new Date();
+        updateData.priceSource = 'manual'; // Since user manually updated
+      }
+      
+      // Handle quantity updates
+      if (data.quantity !== undefined) {
+        updateData.quantity = data.quantity;
+        // Recalculate values based on new quantity
+        const unitPrice = Number(holding.unitPrice) || 0;
+        updateData.valueUSD = data.quantity * unitPrice;
+        updateData.valueSGD = data.quantity * unitPrice * 1.35;
+        updateData.valueINR = data.quantity * unitPrice * 83;
+      }
+
+      await prisma.holdings.update({
+        where: { id: holding.id },
+        data: updateData
+      });
+
+      // Build success message
+      let message = `Successfully updated ${holding.symbol}.`;
+      if (data.unitPrice !== undefined) message += ` New buy price: $${data.unitPrice}`;
+      if (data.currentUnitPrice !== undefined) message += ` New current price: $${data.currentUnitPrice}`;
+      if (data.quantity !== undefined) message += ` New quantity: ${data.quantity}`;
+
+      return { 
+        success: true, 
+        message: message.trim()
+      };
+    } catch (error) {
+      console.error('Edit holding error:', error);
+      return { success: false, message: 'Database error while editing holding' };
+    }
   }
   
   private static async executeDeleteHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
     // For now, return a placeholder - we'll need to find the holding ID first
     return { success: false, message: 'Delete holding not implemented yet' };
+  }
+
+  private static async executeReduceHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      // Get or create user (for testing - using default user)
+      let user = await prisma.user.findFirst({
+        where: { id: 'default-user' }
+      });
+      
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            id: 'default-user',
+            email: 'default@example.com',
+            name: 'Default User'
+          }
+        });
+      }
+
+      // Find the existing holding by exact symbol (LLM should have already found the correct one)
+      const holding = await prisma.holdings.findFirst({
+        where: {
+          symbol: data.symbol
+        }
+      });
+
+      if (!holding) {
+        return { 
+          success: false, 
+          message: `No holding found with symbol ${data.symbol}. Please check the symbol and try again.` 
+        };
+      }
+
+      const currentQuantity = Number(holding.quantity) || 0;
+      let reduceQuantity = data.quantity;
+
+      // Handle "half" reduction
+      if (typeof data.quantity === 'string' && data.quantity.toLowerCase() === 'half') {
+        reduceQuantity = Math.floor(currentQuantity / 2);
+      } else if (typeof data.quantity === 'number') {
+        reduceQuantity = data.quantity;
+      } else {
+        return { success: false, message: 'Invalid quantity specified for reduction' };
+      }
+
+      if (reduceQuantity > currentQuantity) {
+        return { 
+          success: false, 
+          message: `Cannot reduce by ${reduceQuantity} shares. You only have ${currentQuantity} shares of ${holding.symbol}.` 
+        };
+      }
+
+      const newQuantity = currentQuantity - reduceQuantity;
+      const reductionValue = reduceQuantity * (data.unitPrice || Number(holding.unitPrice) || 0);
+
+      // Update the holding
+      if (newQuantity === 0) {
+        // Delete the holding if quantity becomes 0
+        await prisma.holdings.delete({
+          where: { id: holding.id }
+        });
+        return { 
+          success: true, 
+          message: `Successfully sold all ${currentQuantity} shares of ${holding.symbol} at $${data.unitPrice || holding.unitPrice}` 
+        };
+      } else {
+        // Update quantity and values
+        await prisma.holdings.update({
+          where: { id: holding.id },
+          data: {
+            quantity: newQuantity,
+            valueSGD: (Number(holding.valueSGD) || 0) * (newQuantity / currentQuantity),
+            valueUSD: (Number(holding.valueUSD) || 0) * (newQuantity / currentQuantity),
+            valueINR: (Number(holding.valueINR) || 0) * (newQuantity / currentQuantity)
+          }
+        });
+        return { 
+          success: true, 
+          message: `Successfully sold ${reduceQuantity} shares of ${holding.symbol} at $${data.unitPrice || holding.unitPrice}. ${newQuantity} shares remaining.` 
+        };
+      }
+    } catch (error) {
+      console.error('Reduce holding error:', error);
+      return { success: false, message: 'Database error while reducing holding' };
+    }
+  }
+
+  private static async executeIncreaseHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      // Get or create user (for testing - using default user)
+      let user = await prisma.user.findFirst({
+        where: { id: 'default-user' }
+      });
+      
+      if (!user) {
+        user = await prisma.user.create({
+          data: {
+            id: 'default-user',
+            email: 'default@example.com',
+            name: 'Default User'
+          }
+        });
+      }
+
+      // Find the existing holding by exact symbol (LLM should have already found the correct one)
+      const holding = await prisma.holdings.findFirst({
+        where: {
+          symbol: data.symbol
+        }
+      });
+
+      if (!holding) {
+        return { 
+          success: false, 
+          message: `No holding found with symbol ${data.symbol}. Please check the symbol and try again.` 
+        };
+      }
+
+      const currentQuantity = Number(holding.quantity) || 0;
+      const addQuantity = data.quantity;
+      const newQuantity = currentQuantity + addQuantity;
+      const additionValue = addQuantity * data.unitPrice;
+
+      // Calculate new weighted average price
+      const currentTotalValue = currentQuantity * (Number(holding.unitPrice) || 0);
+      const newTotalValue = currentTotalValue + additionValue;
+      const newAveragePrice = newTotalValue / newQuantity;
+
+      // Update the holding
+      await prisma.holdings.update({
+        where: { id: holding.id },
+        data: {
+          quantity: newQuantity,
+          unitPrice: newAveragePrice,
+          valueSGD: (Number(holding.valueSGD) || 0) + (additionValue * (holding.entryCurrency === 'USD' ? 1.35 : 1)),
+          valueUSD: (Number(holding.valueUSD) || 0) + (additionValue * (holding.entryCurrency === 'USD' ? 1 : 1/1.35)),
+          valueINR: (Number(holding.valueINR) || 0) + (additionValue * (holding.entryCurrency === 'INR' ? 1 : 63.5))
+        }
+      });
+
+      return { 
+        success: true, 
+        message: `Successfully added ${addQuantity} shares of ${holding.symbol} at $${data.unitPrice}. New average price: $${newAveragePrice.toFixed(2)}. Total shares: ${newQuantity}.` 
+      };
+    } catch (error) {
+      console.error('Increase holding error:', error);
+      return { success: false, message: 'Database error while increasing holding' };
+    }
   }
   
   private static async executeAddYearlyData(data: any): Promise<{ success: boolean; message: string; data?: any }> {

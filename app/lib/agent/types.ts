@@ -43,6 +43,8 @@ export interface AgentAction {
 
 export type IntentType = 
   | 'add_holding'
+  | 'reduce_holding'
+  | 'increase_holding'
   | 'edit_holding'
   | 'delete_holding'
   | 'add_yearly_data'
@@ -52,12 +54,14 @@ export type IntentType =
 
 export type ActionType = 
   | 'add_holding'
+  | 'reduce_holding'
+  | 'increase_holding'
   | 'add_to_existing_holding'
   | 'edit_holding'
   | 'delete_holding'
   | 'add_yearly_data'
   | 'update_profile'
-  | 'analyze_portfolio';
+  | 'portfolio_analysis';
 
 export interface ExtractedHoldingData {
   symbol?: string;

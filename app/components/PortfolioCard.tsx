@@ -104,8 +104,18 @@ const PortfolioCard = React.memo(({
       setEditingHolding(null);
       setAddingToCategory(false);
       
-      // Refresh holdings data
-      if (onHoldingsUpdate) onHoldingsUpdate();
+      // Refresh holdings data and ensure proper scroll position
+      if (onHoldingsUpdate) {
+        onHoldingsUpdate();
+        
+        // Small delay to ensure DOM updates, then scroll to top of holdings
+        setTimeout(() => {
+          const holdingsSection = document.querySelector('.fixed-portfolio-grid');
+          if (holdingsSection) {
+            holdingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      }
       
     } catch (error) {
       console.error('Error saving holding:', error);

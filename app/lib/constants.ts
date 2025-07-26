@@ -1,10 +1,10 @@
 // app/lib/constants.ts
 // Centralized constants for the entire application
 
-// PORTFOLIO ALLOCATION TARGETS
+// PORTFOLIO ALLOCATION TARGETS (Fallback defaults only)
 export const DEFAULT_ALLOCATION_TARGETS = {
-  core: 25,
-  growth: 55,
+  core: 40, // Updated to match user's actual targets
+  growth: 40, // Updated to match user's actual targets
   hedge: 10,
   liquidity: 10,
   rebalanceThreshold: 5

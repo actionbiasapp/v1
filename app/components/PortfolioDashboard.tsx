@@ -19,6 +19,7 @@ import { calculatePortfolioValue, type ExchangeRates } from '@/app/lib/portfolio
 import AllocationChartCard from './AllocationChartCard';
 import { DEFAULT_ALLOCATION_TARGETS } from '@/app/lib/constants';
 import AgentChat from './AgentChat';
+import SignalMode from './SignalMode';
 import { AgentContext } from '@/app/lib/agent/types';
 
 // Live indicator component
@@ -42,6 +43,7 @@ export default function PortfolioDashboard() {
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [usdToSgd, setUsdToSgd] = useState(1.35);
+  const [usbMode, setUsbMode] = useState(false);
 
   // Portfolio Data Hook - handles all API integration
   const {
@@ -183,6 +185,31 @@ export default function PortfolioDashboard() {
     fetchHoldings(); // Refresh to use new targets
   };
 
+  // Enhanced portfolio update handler with loading states and scroll management
+  const handlePortfolioUpdate = useCallback(async () => {
+    // Show loading state
+    setToast({ message: 'Updating holdings...', type: 'success' });
+    
+    try {
+      await fetchHoldings();
+      
+      // Show success message
+      setToast({ message: 'Holdings updated successfully!', type: 'success' });
+      
+      // Scroll to top of holdings section to prevent items from disappearing
+      const holdingsSection = document.querySelector('.fixed-portfolio-grid');
+      if (holdingsSection) {
+        holdingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setToast(null), 3000);
+    } catch (error) {
+      setToast({ message: 'Failed to update holdings', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  }, [fetchHoldings]);
+
   // Refresh Prices Handler
   const handleRefreshPrices = async () => {
     setRefreshingPrices(true);
@@ -241,11 +268,19 @@ export default function PortfolioDashboard() {
         <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
           <h1 className="text-2xl font-bold text-white">Action Bias Portfolio</h1>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3">
             <CurrencyToggleSimple 
               displayCurrency={displayCurrency}
               onCurrencyChange={setDisplayCurrency}
             />
+            <button
+              onClick={() => setUsbMode(true)}
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-3 md:px-4 py-2 rounded-lg font-medium shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-1 md:gap-2 text-sm md:text-base"
+            >
+              <span className="text-base md:text-lg">🎯</span>
+              <span className="hidden sm:inline">Signal Mode</span>
+              <span className="sm:hidden">Signal</span>
+            </button>
             <FinancialSetupButton 
               onProfileUpdate={refreshAllData}
               portfolioTotal={totalValue}
@@ -303,7 +338,7 @@ export default function PortfolioDashboard() {
             expandedCards={expandedCards}
             onToggleExpand={handleToggleExpand}
             displayCurrency={displayCurrency}
-            onHoldingsUpdate={fetchHoldings}
+            onHoldingsUpdate={handlePortfolioUpdate}
           />
         </div>
 
@@ -335,8 +370,18 @@ export default function PortfolioDashboard() {
           financialProfile: {},
           displayCurrency: displayCurrency
         }}
-        onPortfolioUpdate={refreshAllData}
+        onPortfolioUpdate={handlePortfolioUpdate}
       />
+
+                  {/* Signal Mode */}
+            <SignalMode
+              holdings={holdings}
+              displayCurrency={displayCurrency}
+              exchangeRates={null} // TODO: Add exchange rates
+              isEnabled={usbMode}
+              onToggle={setUsbMode}
+              allocationTargets={allocationTargets}
+            />
     </div>
   );
 }

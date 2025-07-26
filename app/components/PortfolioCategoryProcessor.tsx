@@ -78,7 +78,9 @@ export function usePortfolioCategoryProcessor({
 
     // Process each category
     return categories.map(category => {
-      const categoryHoldings = holdings.filter(h => h.category === category.name);
+      const categoryHoldings = holdings
+        .filter(h => h.category === category.name)
+        .sort((a, b) => a.symbol.localeCompare(b.symbol)); // Sort alphabetically by symbol
       
       // Calculate current value using centralized calculation
       const exchangeRates: ExchangeRates | null = usdToSgd ? {

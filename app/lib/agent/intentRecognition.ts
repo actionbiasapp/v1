@@ -98,15 +98,23 @@ const INTENT_PATTERNS: IntentPattern[] = [
     intent: 'add_yearly_data',
     patterns: [
       /(\d{4})\s+(income|earned|made)\s+\$?(\d+(?:,\d+)*(?:\.\d+)?)/i,
+      /(\d{4})\s+(income|earned|made)\s+was\s+\$?(\d+(?:,\d+)*(?:\.\d+)?)/i,
       /(\d{4})\s+expenses?\s+\$?(\d+(?:,\d+)*(?:\.\d+)?)/i,
+      /(\d{4})\s+expenses?\s+were\s+\$?(\d+(?:,\d+)*(?:\.\d+)?)/i,
       /(\d{4})\s+net\s+worth\s+\$?(\d+(?:,\d+)*(?:\.\d+)?)/i,
+      /(\d{4})\s+net\s+worth\s+was\s+\$?(\d+(?:,\d+)*(?:\.\d+)?)/i,
       /(\d{4})\s+savings?\s+\$?(\d+(?:,\d+)*(?:\.\d+)?)/i,
+      /(\d{4})\s+savings?\s+were\s+\$?(\d+(?:,\d+)*(?:\.\d+)?)/i,
       /(\d{4})\s+was\s+(good|bad)\s+year/i
     ],
     entityExtractors: [
       (match) => ({ year: parseInt(match[1]), income: parseFloat(match[3].replace(/,/g, '')) }),
+      (match) => ({ year: parseInt(match[1]), income: parseFloat(match[3].replace(/,/g, '')) }),
+      (match) => ({ year: parseInt(match[1]), expenses: parseFloat(match[2].replace(/,/g, '')) }),
       (match) => ({ year: parseInt(match[1]), expenses: parseFloat(match[2].replace(/,/g, '')) }),
       (match) => ({ year: parseInt(match[1]), netWorth: parseFloat(match[2].replace(/,/g, '')) }),
+      (match) => ({ year: parseInt(match[1]), netWorth: parseFloat(match[2].replace(/,/g, '')) }),
+      (match) => ({ year: parseInt(match[1]), savings: parseFloat(match[2].replace(/,/g, '')) }),
       (match) => ({ year: parseInt(match[1]), savings: parseFloat(match[2].replace(/,/g, '')) }),
       (match) => ({ year: parseInt(match[1]) })
     ]

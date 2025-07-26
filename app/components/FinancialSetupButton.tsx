@@ -95,7 +95,6 @@ export default function FinancialSetupButton({
 
   const buttonClass = "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-transparent shadow-md hover:shadow-lg";
   const icon = "⚙️";
-  const text = "Manage";
   
   if (isLoading) {
     return (
@@ -115,7 +114,7 @@ export default function FinancialSetupButton({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           className={`
-            flex items-center gap-2 lg:gap-3 px-3 lg:px-4 py-2 rounded-lg border transition-all duration-200 font-medium text-sm
+            flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg border transition-all duration-200 font-medium text-sm
             ${buttonClass}
             ${isHovered ? 'scale-105' : ''}
           `}
@@ -128,7 +127,6 @@ export default function FinancialSetupButton({
               <span className="hidden sm:inline">Financial Setup</span>
               <span className="sm:hidden">Setup</span>
             </span>
-            <span className="text-xs opacity-90 whitespace-nowrap">{text}</span>
           </div>
         </button>
       </div>
