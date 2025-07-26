@@ -2,14 +2,25 @@
 import OpenAI from 'openai';
 import { IntentResult, AgentContext, AgentResponse } from './types';
 
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY 
-});
+// Lazy initialization to avoid build-time errors
+let openai: OpenAI | null = null;
+
+function getOpenAIClient(): OpenAI {
+  if (!openai) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY environment variable is required');
+    }
+    openai = new OpenAI({ apiKey });
+  }
+  return openai;
+}
 
 export class LLMService {
   static async processMessage(message: string, context: AgentContext): Promise<AgentResponse> {
     try {
-      const response = await openai.chat.completions.create({
+      const openaiClient = getOpenAIClient();
+      const response = await openaiClient.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           {
@@ -111,6 +122,23 @@ Response: {"action":"confirm","intent":"edit_holding","entities":{"symbol":"[FOU
   }
 
   static async processWithFallback(message: string, context: AgentContext): Promise<AgentResponse> {
+    // Check if OpenAI API key is available
+    if (!process.env.OPENAI_API_KEY) {
+      console.warn('OPENAI_API_KEY not available, using fallback');
+      const fallbackResult = this.simpleFallback(message);
+      return {
+        action: 'clarify',
+        data: {
+          intent: 'unknown',
+          entities: {},
+          confidence: 0.3
+        },
+        message: fallbackResult.message,
+        confidence: 0.3,
+        suggestions: fallbackResult.suggestions
+      };
+    }
+
     // Cost-saving: Use simple fallback for basic patterns to save tokens
     const lowerMessage = message.toLowerCase();
     
