@@ -55,8 +55,23 @@ export class PortfolioAgent {
         context.financialProfile
       );
       
+      console.log('🔍 Rich context built, processing with LLM...');
+      
       // Use LLM for intent recognition and data extraction
-      const llmResponse = await LLMService.processMessage(message, richContext);
+      let llmResponse: LLMResponse;
+      try {
+        llmResponse = await LLMService.processMessage(message, richContext);
+        console.log('🔍 LLM response received:', llmResponse);
+      } catch (error) {
+        console.error('❌ LLM processing error:', error);
+        return {
+          action: 'error',
+          data: { intent: 'error', entities: {} },
+          message: 'Sorry, I encountered an error processing your request. Please try again.',
+          confidence: 0,
+          suggestions: ['Try rephrasing your request', 'Ask about your portfolio value', 'Show my holdings']
+        };
+      }
       
       // Convert LLMResponse to AgentResponse format
       const agentResponse: AgentResponse = {
