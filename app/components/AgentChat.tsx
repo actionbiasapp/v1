@@ -238,66 +238,8 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
   const handleSuggestionClick = async (suggestion: string) => {
     if (isProcessing) return;
 
-    setIsProcessing(true);
-    
-    try {
-      // Send the suggestion as a userSelection with the original message
-      const originalMessage = messages.length > 0 ? messages[messages.length - 1].content : '';
-      
-      const response = await fetch('/api/agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          message: originalMessage,
-          userSelection: suggestion,
-          context 
-        })
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        const agentMessage: AgentMessage = {
-          type: 'agent',
-          content: result.message,
-          data: result.data,
-          suggestions: result.suggestions,
-          timestamp: new Date()
-        };
-
-        // Remove the pending action from the previous message
-        setMessages(prev => prev.map(msg => 
-          msg.pendingAction ? { ...msg, pendingAction: undefined } : msg
-        ));
-
-        setMessages(prev => [...prev, agentMessage]);
-
-        if (result.success && onPortfolioUpdate) {
-          onPortfolioUpdate();
-        }
-      } else {
-        const errorMessage: AgentMessage = {
-          type: 'agent',
-          content: result.message || 'Failed to process selection. Please try again.',
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, errorMessage]);
-      }
-    } catch (error) {
-      const errorMessage: AgentMessage = {
-        type: 'agent',
-        content: 'Failed to process selection. Please try again.',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsProcessing(false);
-      
-      // Restore focus
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-    }
+    // Simply send the suggestion as a regular message
+    await sendMessage(suggestion);
   };
 
   const handleConfirmAction = async (pendingAction: any) => {
