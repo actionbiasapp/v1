@@ -111,7 +111,9 @@ export function usePortfolioData(): UsePortfolioDataReturn {
   // Fetch holdings from API
   const fetchHoldings = async () => {
     try {
-      const response = await fetch(API_ENDPOINTS.HOLDINGS);
+      // Add cache-busting timestamp to force fresh data
+      const timestamp = Date.now();
+      const response = await fetch(`${API_ENDPOINTS.HOLDINGS}?t=${timestamp}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }

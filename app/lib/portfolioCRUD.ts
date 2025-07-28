@@ -85,7 +85,7 @@ export async function createHolding(formData: HoldingFormData, categoryName: str
   
   if (isConfirmedHolding) {
     // Use confirmed total cost for conversion
-    const confirmedTotalCost = formData._confirmedTotalCost || formData.amount;
+    const confirmedTotalCost = formData._confirmedTotalCost || (formData.quantity || 0) * (formData.unitPrice || 0);
     convertedValues = await convertToAllCurrencies(confirmedTotalCost, formData.currency);
     
     holdingData = {
@@ -109,7 +109,8 @@ export async function createHolding(formData: HoldingFormData, categoryName: str
     };
   } else {
     // Original flow for non-confirmed holdings
-    convertedValues = await convertToAllCurrencies(formData.amount, formData.currency);
+    const totalValue = (formData.quantity || 0) * (formData.unitPrice || 0);
+    convertedValues = await convertToAllCurrencies(totalValue, formData.currency);
     
     holdingData = {
       symbol: formData.symbol.toUpperCase(),
@@ -136,33 +137,77 @@ export async function createHolding(formData: HoldingFormData, categoryName: str
 
 // Update existing holding
 export async function updateHolding(holdingId: string, formData: HoldingFormData, categoryName: string) {
-  const convertedValues = await convertToAllCurrencies(formData.amount, formData.currency);
-  
-  const holdingData = {
-    symbol: formData.symbol.toUpperCase(),
-    name: formData.name,
-    valueSGD: convertedValues.SGD,
-    valueINR: convertedValues.INR,
-    valueUSD: convertedValues.USD,
-    value: convertedValues.SGD,
-    entryCurrency: formData.currency,
-    category: categoryName,
-    location: formData.location,
-    quantity: formData.quantity ?? formData._confirmedQuantity ?? null,
-    unitPrice: formData.unitPrice ?? formData._confirmedUnitPrice ?? null,
-    currentUnitPrice: formData.currentUnitPrice ?? null,
-    manualPricing: formData.manualPricing ?? false,
-    assetType: formData.assetType || null
-  };
+  try {
+    // Validate required fields
+    if (!formData.symbol || !formData.name || !formData.location) {
+      throw new Error('Missing required fields');
+    }
 
-  const response = await fetch(`/api/holdings/${holdingId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(holdingData)
-  });
+    // Calculate new values based on updated data
+    let updateData: any = {
+      symbol: formData.symbol,
+      name: formData.name,
+      location: formData.location,
+      assetType: formData.assetType || 'stock',
+      entryCurrency: formData.currency // Add the entry currency
+    };
 
-  if (!response.ok) throw new Error('Failed to update holding');
-  return response.json();
+    // Handle quantity and price updates
+    if (formData.quantity !== undefined) {
+      updateData.quantity = formData.quantity;
+    }
+    
+    if (formData.unitPrice !== undefined) {
+      updateData.unitPrice = formData.unitPrice;
+    }
+    
+    if (formData.currentUnitPrice !== undefined) {
+      updateData.currentUnitPrice = formData.currentUnitPrice;
+      updateData.priceUpdated = new Date();
+      updateData.priceSource = 'manual';
+    }
+
+    // Recalculate stored values to ensure consistency
+    if (formData.quantity && formData.currentUnitPrice) {
+      const totalValue = formData.quantity * formData.currentUnitPrice;
+      const convertedValues = await convertToAllCurrencies(totalValue, formData.currency);
+      
+      updateData.valueSGD = convertedValues.SGD;
+      updateData.valueUSD = convertedValues.USD;
+      updateData.valueINR = convertedValues.INR;
+    }
+
+    // Handle category change if provided
+    if (formData.category && formData.category !== categoryName) {
+      // Find the new category
+      const categoryResponse = await fetch('/api/categories');
+      if (categoryResponse.ok) {
+        const categories = await categoryResponse.json();
+        const newCategory = categories.find((cat: any) => cat.name === formData.category);
+        if (newCategory) {
+          updateData.categoryId = newCategory.id;
+        }
+      }
+    }
+
+    // Handle symbol rename if provided
+    if (formData.newSymbol && formData.newSymbol !== formData.symbol) {
+      updateData.symbol = formData.newSymbol;
+    }
+
+    const response = await fetch(`/api/holdings/${holdingId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+
+    if (!response.ok) throw new Error('Failed to update holding');
+
+    return await response.json();
+  } catch (error) {
+    console.error('Update holding error:', error);
+    throw error;
+  }
 }
 
 // Delete holding

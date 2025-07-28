@@ -79,7 +79,8 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
 
       const result = await response.json();
 
-      if (result.success) {
+      // Handle message processing responses (no success field)
+      if (result.action) {
         // Handle confirmation actions with a single message
         if (result.action === 'confirm' && result.data) {
           const confirmationMessage: AgentMessage = {
@@ -87,11 +88,11 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
             content: `${result.message}\n\nWould you like me to proceed?`,
             data: result.data,
             suggestions: result.suggestions,
-            pendingAction: {
+            pendingAction: result.requires_confirmation ? {
               intent: result.data.intent,
               entities: result.data.entities,
               message: result.message
-            },
+            } : undefined,
             timestamp: new Date()
           };
           setMessages(prev => [...prev, confirmationMessage]);
@@ -114,6 +115,24 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
             timestamp: new Date()
           };
           setMessages(prev => [...prev, agentMessage]);
+        }
+      } else if (result.success !== undefined) {
+        // Handle action execution responses (has success field)
+        if (result.success) {
+          const agentMessage: AgentMessage = {
+            type: 'agent',
+            content: result.message,
+            data: result.data,
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, agentMessage]);
+        } else {
+          const errorMessage: AgentMessage = {
+            type: 'agent',
+            content: result.message || 'Sorry, I encountered an error.',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
         }
       } else {
         const errorMessage: AgentMessage = {
@@ -216,9 +235,69 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
     sendMessage(inputValue);
   };
 
-  const handleSuggestionClick = (suggestion: string) => {
-    setInputValue(suggestion);
-    inputRef.current?.focus();
+  const handleSuggestionClick = async (suggestion: string) => {
+    if (isProcessing) return;
+
+    setIsProcessing(true);
+    
+    try {
+      // Send the suggestion as a userSelection with the original message
+      const originalMessage = messages.length > 0 ? messages[messages.length - 1].content : '';
+      
+      const response = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: originalMessage,
+          userSelection: suggestion,
+          context 
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        const agentMessage: AgentMessage = {
+          type: 'agent',
+          content: result.message,
+          data: result.data,
+          suggestions: result.suggestions,
+          timestamp: new Date()
+        };
+
+        // Remove the pending action from the previous message
+        setMessages(prev => prev.map(msg => 
+          msg.pendingAction ? { ...msg, pendingAction: undefined } : msg
+        ));
+
+        setMessages(prev => [...prev, agentMessage]);
+
+        if (result.success && onPortfolioUpdate) {
+          onPortfolioUpdate();
+        }
+      } else {
+        const errorMessage: AgentMessage = {
+          type: 'agent',
+          content: result.message || 'Failed to process selection. Please try again.',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      const errorMessage: AgentMessage = {
+        type: 'agent',
+        content: 'Failed to process selection. Please try again.',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsProcessing(false);
+      
+      // Restore focus
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
+    }
   };
 
   const handleConfirmAction = async (pendingAction: any) => {
@@ -245,6 +324,11 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
         content: result.message,
         timestamp: new Date()
       };
+
+      // Remove the pending action from the previous message
+      setMessages(prev => prev.map(msg => 
+        msg.pendingAction ? { ...msg, pendingAction: undefined } : msg
+      ));
 
       setMessages(prev => [...prev, actionMessage]);
 
@@ -279,6 +363,11 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
   };
   
   const handleCancelAction = () => {
+    // Remove the pending action from the previous message
+    setMessages(prev => prev.map(msg => 
+      msg.pendingAction ? { ...msg, pendingAction: undefined } : msg
+    ));
+
     const cancelMessage: AgentMessage = {
       type: 'agent',
       content: 'Action cancelled. How else can I help you?',
@@ -305,13 +394,13 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
 
   if (!isOpen) {
     return (
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className="fixed bottom-6 right-4 z-50">
         <button
           onClick={() => setIsOpen(true)}
-          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white p-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
+          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white p-4 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2 min-w-[56px] min-h-[56px]"
           title="Ask Portfolio Agent"
         >
-          <span className="text-lg">🤖</span>
+          <span className="text-xl">🤖</span>
           <span className="font-medium text-sm hidden sm:inline">Agent</span>
         </button>
       </div>
@@ -319,13 +408,16 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-80 h-96 bg-gray-800 rounded-lg shadow-xl border border-gray-700 flex flex-col">
+    <div className="fixed inset-4 sm:bottom-6 sm:right-4 sm:left-auto sm:top-auto z-50 w-auto h-auto max-w-sm bg-gray-800/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-700/50 flex flex-col max-h-[80vh]">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-gray-700">
-        <h3 className="text-white font-medium">Portfolio Agent</h3>
+      <div className="flex items-center justify-between p-4 border-b border-gray-700/30">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🤖</span>
+          <h3 className="text-white font-semibold text-sm">Portfolio Agent</h3>
+        </div>
         <button
           onClick={() => setIsOpen(false)}
-          className="text-gray-400 hover:text-white"
+          className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-700/50 transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -334,16 +426,16 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
         {messages.length === 0 && (
           <div className="text-center text-gray-400 text-sm">
-            <p className="mb-2">Ask me to manage your portfolio!</p>
-            <div className="space-y-1">
+            <p className="mb-3">Ask me to manage your portfolio!</p>
+            <div className="space-y-2">
               {suggestions.map((suggestion, index) => (
                 <button
                   key={index}
                   onClick={() => handleSuggestionClick(suggestion)}
-                  className="block w-full text-left text-xs text-blue-400 hover:text-blue-300 p-1 rounded"
+                  className="block w-full text-left text-xs text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-gray-700/30 transition-colors"
                 >
                   {suggestion}
                 </button>
@@ -358,23 +450,23 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
             className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-xs p-2 rounded-lg text-sm ${
+              className={`max-w-[85%] p-3 rounded-2xl text-sm ${
                 message.type === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-200'
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white'
+                  : 'bg-gray-700/50 text-gray-200'
               }`}
             >
-              <div className="whitespace-pre-wrap">{message.content}</div>
+              <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
               
               {message.pendingAction && (
-                <div className="mt-3 flex space-x-2">
+                <div className="mt-3 flex flex-col sm:flex-row gap-2">
                   <button
                     onClick={() => handleConfirmAction(message.pendingAction)}
                     disabled={isExecutingAction}
-                    className={`px-3 py-1 rounded text-xs transition-colors ${
+                    className={`px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
                       isExecutingAction 
                         ? 'bg-gray-500 text-gray-300 cursor-not-allowed' 
-                        : 'bg-green-600 text-white hover:bg-green-700'
+                        : 'bg-green-600 text-white hover:bg-green-700 shadow-sm'
                     }`}
                   >
                     {isExecutingAction ? 'Executing...' : 'Yes, proceed'}
@@ -382,10 +474,10 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
                   <button
                     onClick={handleCancelAction}
                     disabled={isExecutingAction}
-                    className={`px-3 py-1 rounded text-xs transition-colors ${
+                    className={`px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
                       isExecutingAction 
                         ? 'bg-gray-500 text-gray-300 cursor-not-allowed' 
-                        : 'bg-gray-600 text-white hover:bg-gray-700'
+                        : 'bg-gray-600 text-white hover:bg-gray-700 shadow-sm'
                     }`}
                   >
                     No, cancel
@@ -394,12 +486,12 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
               )}
               
               {message.suggestions && message.suggestions.length > 0 && (
-                <div className="mt-2 space-y-1">
+                <div className="mt-3 space-y-1">
                   {message.suggestions.map((suggestion, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleSuggestionClick(suggestion)}
-                      className="block w-full text-left text-xs text-blue-400 hover:text-blue-300 p-1 rounded"
+                      className="block w-full text-left text-xs text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-gray-700/30 transition-colors"
                     >
                       {suggestion}
                     </button>
@@ -412,9 +504,9 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
         
         {isProcessing && (
           <div className="flex justify-start">
-            <div className="bg-gray-700 text-gray-200 p-2 rounded-lg">
+            <div className="bg-gray-700/50 text-gray-200 p-3 rounded-2xl">
               <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-400 border-t-transparent"></div>
                 <span className="text-sm">Thinking...</span>
               </div>
             </div>
@@ -425,7 +517,7 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-3 border-t border-gray-700">
+      <form onSubmit={handleSubmit} className="p-4 border-t border-gray-700/30">
         <div className="flex space-x-2">
           <input
             ref={inputRef}
@@ -433,15 +525,17 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Ask me to add, edit, or analyze..."
-            className="flex-1 bg-gray-700 text-white text-sm rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 bg-gray-700/50 text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 border border-gray-600/30"
             disabled={isProcessing}
           />
           <button
             type="submit"
             disabled={isProcessing || !inputValue.trim()}
-            className="bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md transition-all duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
-            Send
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
           </button>
         </div>
       </form>

@@ -82,6 +82,33 @@ export function convertToAllCurrencies(
 }
 
 /**
+ * Format number with thousand separators
+ */
+export function formatNumberWithSeparators(
+  value: number | string,
+  options: { precision?: number; compact?: boolean } = {}
+): string {
+  const { precision = 0, compact = false } = options;
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  
+  if (isNaN(num)) return '0';
+  
+  if (compact && Math.abs(num) >= 1000) {
+    if (Math.abs(num) >= 1000000) {
+      return `${(num / 1000000).toFixed(precision)}M`;
+    } else {
+      return `${(num / 1000).toFixed(precision)}k`;
+    }
+  }
+  
+  return new Intl.NumberFormat('en-SG', {
+    minimumFractionDigits: precision,
+    maximumFractionDigits: precision,
+    useGrouping: true
+  }).format(num);
+}
+
+/**
  * Format currency value with proper symbol and formatting
  */
 export function formatCurrency(
@@ -100,12 +127,59 @@ export function formatCurrency(
     }
   }
   
+  // Use Intl.NumberFormat for consistent thousand separators
   return new Intl.NumberFormat('en-SG', {
     style: 'currency',
     currency: currency,
     minimumFractionDigits: precision,
-    maximumFractionDigits: precision
+    maximumFractionDigits: precision,
+    useGrouping: true // Ensure thousand separators
   }).format(amount).replace(/[A-Z]{3}/, symbol);
+}
+
+/**
+ * Format currency display for holdings
+ * Shows both portfolio currency and holding currency when they differ
+ * Avoids duplication when portfolio currency matches holding currency
+ */
+export function formatCurrencyDisplay(
+  holding: { 
+    valueSGD: number; 
+    valueINR: number; 
+    valueUSD: number; 
+    entryCurrency: string;
+    quantity?: number;
+    currentUnitPrice?: number;
+  },
+  portfolioCurrency: CurrencyCode,
+  exchangeRates?: any
+): string {
+  const holdingCurrency = holding.entryCurrency as CurrencyCode;
+  
+  // Get the value in portfolio currency
+  const portfolioValue = getHoldingDisplayValue(holding, portfolioCurrency);
+  
+  // If currencies are the same, show only one
+  if (portfolioCurrency === holdingCurrency) {
+    return formatCurrency(portfolioValue, portfolioCurrency, { compact: true, precision: 0 });
+  }
+  
+  // Get the value in holding's native currency
+  let holdingValue: number;
+  
+  if (holding.quantity && holding.currentUnitPrice) {
+    // Use calculated value from quantity × current price
+    holdingValue = holding.quantity * holding.currentUnitPrice;
+  } else {
+    // Use stored value
+    holdingValue = getHoldingDisplayValue(holding, holdingCurrency);
+  }
+  
+  // Format both currencies
+  const portfolioFormatted = formatCurrency(portfolioValue, portfolioCurrency, { compact: true, precision: 0 });
+  const holdingFormatted = formatCurrency(holdingValue, holdingCurrency, { compact: true, precision: 0 });
+  
+  return `${portfolioFormatted} (${holdingFormatted})`;
 }
 
 /**

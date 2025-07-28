@@ -1,0 +1,325 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String              @id @default(cuid())
+  email               String              @unique
+  name                String
+  country             String              @default("Singapore")
+  taxStatus           String              @default("Employment Pass")
+  primaryCurrency     String              @default("SGD")
+  birthYear           Int?
+  srsLimit            Decimal             @default(35700)
+  fiGoal              Decimal             @default(2500000)
+  fiTargetYear        Int                 @default(2032)
+  profileCompleteness Int                 @default(0)
+  dataQuality         Int                 @default(0)
+  yearsOfData         Int                 @default(0)
+  lastProfileUpdate   DateTime            @default(now())
+  autoUpdatePortfolio Boolean             @default(true)
+  shareAnonymizedData Boolean             @default(false)
+  shareWithAdvisor    Boolean             @default(false)
+  exportDataAllowed   Boolean             @default(true)
+  srsDeadlineReminder Boolean             @default(true)
+  rebalanceReminder   Boolean             @default(true)
+  fiProgressReminder  Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  categories          AssetCategory[]
+  auditLogs           AuditLog[]
+  expenseRecords      ExpenseRecord[]
+  fiPlans             FIPlan[]
+  holdings            Holdings[]
+  incomeRecords       IncomeRecord[]
+  netWorthRecords     NetWorthRecord[]
+  portfolioStrategies PortfolioStrategy[]
+  recommendations     Recommendation[]
+  srsPlans            SRSPlan[]
+  savingsRecords      SavingsRecord[]
+  coreTarget      Int              @default(25)
+  growthTarget    Int              @default(55)
+  hedgeTarget     Int              @default(10)
+  liquidityTarget Int              @default(10)
+  rebalanceThreshold Int           @default(5)
+}
+
+model IncomeRecord {
+  id               String   @id @default(cuid())
+  userId           String
+  year             Int
+  employmentIncome Decimal  @default(0)
+  bonusIncome      Decimal  @default(0)
+  investmentIncome Decimal  @default(0)
+  businessIncome   Decimal  @default(0)
+  otherIncome      Decimal  @default(0)
+  totalIncome      Decimal  @default(0)
+  taxesPaid        Decimal  @default(0)
+  currency         String   @default("SGD")
+  notes            String?
+  isEstimated      Boolean  @default(false)
+  confidence       String   @default("medium")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year])
+  @@index([userId, year])
+}
+
+model ExpenseRecord {
+  id             String   @id @default(cuid())
+  userId         String
+  year           Int
+  totalExpenses  Decimal  @default(0)
+  currency       String   @default("SGD")
+  savingsRate    Decimal  @default(0)
+  savingsAmount  Decimal  @default(0)
+  housing        Decimal?
+  transportation Decimal?
+  food           Decimal?
+  healthcare     Decimal?
+  entertainment  Decimal?
+  other          Decimal?
+  notes          String?
+  isEstimated    Boolean  @default(false)
+  confidence     String   @default("medium")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year])
+  @@index([userId, year])
+}
+
+model SavingsRecord {
+  id                String   @id @default(cuid())
+  userId            String
+  year              Int
+  totalSavings      Decimal  @default(0)
+  investmentSavings Decimal  @default(0)
+  emergencyFund     Decimal  @default(0)
+  srsContributions  Decimal  @default(0)
+  cpfContributions  Decimal  @default(0)
+  otherSavings      Decimal  @default(0)
+  currency          String   @default("SGD")
+  srsProvider       String?
+  srsTaxSavings     Decimal  @default(0)
+  notes             String?
+  isEstimated       Boolean  @default(false)
+  confidence        String   @default("medium")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year])
+  @@index([userId, year])
+}
+
+model NetWorthRecord {
+  id               String   @id @default(cuid())
+  userId           String
+  year             Int
+  month            Int?
+  totalAssets      Decimal  @default(0)
+  portfolioValue   Decimal  @default(0)
+  realEstate       Decimal  @default(0)
+  cash             Decimal  @default(0)
+  srsValue         Decimal  @default(0)
+  cpfValue         Decimal  @default(0)
+  otherAssets      Decimal  @default(0)
+  totalLiabilities Decimal  @default(0)
+  mortgage         Decimal  @default(0)
+  personalLoans    Decimal  @default(0)
+  creditCardDebt   Decimal  @default(0)
+  otherDebt        Decimal  @default(0)
+  netWorth         Decimal  @default(0)
+  currency         String   @default("SGD")
+  notes            String?
+  isEstimated      Boolean  @default(false)
+  confidence       String   @default("medium")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, month])
+  @@index([userId, year])
+}
+
+model PortfolioStrategy {
+  id                 String   @id @default(cuid())
+  userId             String
+  strategyName       String
+  coreTarget         Decimal  @default(25)
+  growthTarget       Decimal  @default(55)
+  hedgeTarget        Decimal  @default(10)
+  liquidityTarget    Decimal  @default(10)
+  rebalanceThreshold Decimal  @default(5)
+  riskLevel          String   @default("moderate")
+  description        String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+model SRSPlan {
+  id                  String            @id @default(cuid())
+  userId              String
+  autoOptimize        Boolean           @default(true)
+  monthlyTarget       Decimal           @default(0)
+  preferredProvider   String            @default("DBS")
+  projectedTotalAt62  Decimal           @default(0)
+  projectedTaxSavings Decimal           @default(0)
+  withdrawalStartAge  Int?
+  withdrawalRate      Decimal?
+  withdrawalStrategy  String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  srsContributions    SRSContribution[]
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model SRSContribution {
+  id                  String   @id @default(cuid())
+  srsplanId           String
+  year                Int
+  plannedContribution Decimal  @default(0)
+  actualContribution  Decimal  @default(0)
+  taxSavings          Decimal  @default(0)
+  provider            String
+  accountType         String   @default("SRS")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  srsPlan             SRSPlan  @relation(fields: [srsplanId], references: [id], onDelete: Cascade)
+
+  @@unique([srsplanId, year])
+  @@index([srsplanId, year])
+}
+
+model FIPlan {
+  id                       String             @id @default(cuid())
+  userId                   String
+  customFIAmount           Decimal            @default(2500000)
+  customTargetYear         Int                @default(2032)
+  leanFIAmount             Decimal            @default(1850000)
+  coastFIAmount            Decimal            @default(0)
+  baristaFIAmount          Decimal            @default(0)
+  fatFIAmount              Decimal            @default(5000000)
+  singaporeExpenses        Decimal            @default(120000)
+  malaysiaExpenses         Decimal            @default(60000)
+  thailandExpenses         Decimal            @default(48000)
+  philippinesExpenses      Decimal            @default(36000)
+  customLocation           String?
+  customExpenses           Decimal?
+  firstMillionAchieved     Boolean            @default(false)
+  firstMillionAchievedDate DateTime?
+  leanFIAchieved           Boolean            @default(false)
+  leanFIAchievedDate       DateTime?
+  fullFIAchieved           Boolean            @default(false)
+  fullFIAchievedDate       DateTime?
+  fatFIAchieved            Boolean            @default(false)
+  fatFIAchievedDate        DateTime?
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  user                     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fiProgressRecords        FIProgressRecord[]
+
+  @@index([userId])
+}
+
+model FIProgressRecord {
+  id              String   @id @default(cuid())
+  fiPlanId        String
+  year            Int
+  netWorth        Decimal  @default(0)
+  fiProgress      Decimal  @default(0)
+  yearsRemaining  Decimal  @default(0)
+  projectedFIDate String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  fiPlan          FIPlan   @relation(fields: [fiPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([fiPlanId, year])
+  @@index([fiPlanId, year])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  tableName String
+  recordId  String
+  field     String?
+  oldValue  String?
+  newValue  String?
+  source    String   @default("user")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([tableName, recordId])
+}
+
+model AssetCategory {
+  id               String     @id @default(cuid())
+  userId           String
+  name             String
+  targetPercentage Decimal
+  description      String?
+  user             User       @relation(fields: [userId], references: [id])
+  holdings         Holdings[]
+}
+
+model Holdings {
+  id            String        @id @default(cuid())
+  userId        String
+  categoryId    String
+  symbol        String
+  name          String
+  quantity      Decimal?
+  valueSGD      Decimal
+  valueINR      Decimal
+  valueUSD      Decimal
+  entryCurrency String        @default("SGD")
+  costBasis     Decimal?
+  location      String
+  updatedAt     DateTime      @default(now())
+  category      AssetCategory @relation(fields: [categoryId], references: [id])
+  user          User          @relation(fields: [userId], references: [id])
+}
+
+model ExchangeRate {
+  id           String   @id @default(cuid())
+  fromCurrency String
+  toCurrency   String
+  rate         Decimal
+  source       String   @default("api")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([fromCurrency, toCurrency])
+  @@index([fromCurrency, toCurrency, updatedAt])
+}
+
+model Recommendation {
+  id           String   @id @default(cuid())
+  userId       String
+  actionType   String
+  description  String
+  dollarImpact Decimal?
+  priority     Int      @default(1)
+  completed    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
+}

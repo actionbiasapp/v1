@@ -191,6 +191,8 @@ export default function PortfolioDashboard() {
     setToast({ message: 'Updating holdings...', type: 'success' });
     
     try {
+      // Add a small delay to ensure database transaction is committed
+      await new Promise(resolve => setTimeout(resolve, 500));
       await fetchHoldings();
       
       // Show success message
@@ -262,33 +264,53 @@ export default function PortfolioDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header with Currency Switcher and Intelligence Status */}
-        <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
-          <h1 className="text-2xl font-bold text-white">Action Bias Portfolio</h1>
+    <div className="min-h-screen bg-gray-900 text-white">
+      {/* Mobile-optimized header */}
+      <div className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-xl border-b border-gray-800/50">
+        <div className="max-w-6xl mx-auto px-4 py-3">
+          {/* Header Row 1: Title and Live Status */}
+          <div className="flex items-center justify-between mb-3">
+            <h1 className="text-xl font-semibold text-white tracking-tight">Action Bias</h1>
+            {(isInsightsLive || isIntelligenceLive) && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span className="text-xs text-green-400 font-medium">Live</span>
+              </div>
+            )}
+          </div>
           
-          <div className="flex items-center gap-2 md:gap-3">
-            <CurrencyToggleSimple 
-              displayCurrency={displayCurrency}
-              onCurrencyChange={setDisplayCurrency}
-            />
-            <button
-              onClick={() => setUsbMode(true)}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-3 md:px-4 py-2 rounded-lg font-medium shadow-md hover:shadow-lg transition-all duration-200 flex items-center gap-1 md:gap-2 text-sm md:text-base"
-            >
-              <span className="text-base md:text-lg">🎯</span>
-              <span className="hidden sm:inline">Signal Mode</span>
-              <span className="sm:hidden">Signal</span>
-            </button>
-            <FinancialSetupButton 
-              onProfileUpdate={refreshAllData}
-              portfolioTotal={totalValue}
-              allocationTargets={allocationTargets}
-            />
+          {/* Header Row 2: Action Buttons - Mobile Optimized */}
+          <div className="flex items-center justify-between gap-2">
+            {/* Left: Currency Toggle - Compact */}
+            <div className="flex-shrink-0">
+              <CurrencyToggleSimple 
+                displayCurrency={displayCurrency}
+                onCurrencyChange={setDisplayCurrency}
+              />
+            </div>
+            
+            {/* Right: Action Buttons - Consistent Sizing */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setUsbMode(true)}
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-3 py-2.5 rounded-xl font-medium shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-1.5 text-sm min-w-[44px] min-h-[44px]"
+              >
+                <span className="text-base">🎯</span>
+                <span className="hidden xs:inline">Signal</span>
+              </button>
+              
+              <FinancialSetupButton 
+                onProfileUpdate={refreshAllData}
+                portfolioTotal={totalValue}
+                allocationTargets={allocationTargets}
+              />
+            </div>
           </div>
         </div>
-        
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto px-4 py-4 sm:pt-4 pt-20">
         {/* Portfolio Status Metrics - Extracted Component */}
         <PortfolioStatusMetrics
           totalValue={totalValue}
@@ -302,29 +324,38 @@ export default function PortfolioDashboard() {
 
         {/* Portfolio Allocation with Fixed Portfolio Grid */}
         <div className="mb-6">
-          
-          
-          {/* Portfolio Allocation with Fixed Portfolio Grid */}
-        <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-200">
+            <h2 className="text-lg font-semibold text-gray-200 tracking-tight">
               Holdings
             </h2>
-              <button
+            <button
               onClick={handleRefreshPrices}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors ${refreshingPrices ? 'bg-gray-600 text-gray-300' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl font-medium text-sm transition-all duration-200 ${
+                refreshingPrices 
+                  ? 'bg-gray-700 text-gray-300' 
+                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md'
+              }`}
               disabled={refreshingPrices}
             >
               {refreshingPrices ? (
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
               ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582M20 20v-5h-.581M5.635 19.364A9 9 0 104.582 9.582" /></svg>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582M20 20v-5h-.581M5.635 19.364A9 9 0 104.582 9.582" />
+                </svg>
               )}
-              <span>{refreshingPrices ? 'Updating...' : 'Refresh Prices'}</span>
+              <span className="hidden sm:inline">{refreshingPrices ? 'Updating...' : 'Refresh'}</span>
             </button>
           </div>
+          
           {toast && (
-            <div className={`fixed top-6 right-6 z-50 px-4 py-2 rounded shadow-lg font-medium ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>{toast.message}</div>
+            <div className={`fixed top-20 left-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg font-medium text-sm ${
+              toast.type === 'success' 
+                ? 'bg-green-600 text-white' 
+                : 'bg-red-600 text-white'
+            }`}>
+              {toast.message}
+            </div>
           )}
           
           <AppleRadialAllocation 
@@ -340,9 +371,6 @@ export default function PortfolioDashboard() {
             displayCurrency={displayCurrency}
             onHoldingsUpdate={handlePortfolioUpdate}
           />
-        </div>
-
-        
         </div>
 
         {/* AI Insights Section - Extracted Component */}
@@ -373,15 +401,16 @@ export default function PortfolioDashboard() {
         onPortfolioUpdate={handlePortfolioUpdate}
       />
 
-                  {/* Signal Mode */}
-            <SignalMode
-              holdings={holdings}
-              displayCurrency={displayCurrency}
-              exchangeRates={null} // TODO: Add exchange rates
-              isEnabled={usbMode}
-              onToggle={setUsbMode}
-              allocationTargets={allocationTargets}
-            />
+      {/* Signal Mode */}
+      <SignalMode
+        holdings={holdings}
+        displayCurrency={displayCurrency}
+        exchangeRates={exchangeRates}
+        isEnabled={usbMode}
+        onToggle={setUsbMode}
+        yearlyData={yearlyData}
+        allocationTargets={allocationTargets}
+      />
     </div>
   );
 }

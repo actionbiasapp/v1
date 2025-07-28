@@ -88,15 +88,22 @@ export async function PUT(
     let inputValue: number;
     let inputCurrency: CurrencyCode = entryCurrency as CurrencyCode;
 
-    if (valueSGD !== undefined) {
+    // Determine the input value based on the entry currency
+    if (entryCurrency === 'SGD' && valueSGD !== undefined) {
+      inputValue = valueSGD;
+    } else if (entryCurrency === 'USD' && valueUSD !== undefined) {
+      inputValue = valueUSD;
+    } else if (entryCurrency === 'INR' && valueINR !== undefined) {
+      inputValue = valueINR;
+    } else if (valueSGD !== undefined) {
       inputValue = valueSGD;
       inputCurrency = 'SGD';
-    } else if (valueINR !== undefined) {
-      inputValue = valueINR;
-      inputCurrency = 'INR';
     } else if (valueUSD !== undefined) {
       inputValue = valueUSD;
       inputCurrency = 'USD';
+    } else if (valueINR !== undefined) {
+      inputValue = valueINR;
+      inputCurrency = 'INR';
     } else if (value !== undefined) {
       inputValue = value;
       inputCurrency = 'SGD';

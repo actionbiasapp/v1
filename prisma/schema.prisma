@@ -361,3 +361,24 @@ model CronJobLog {
 
   @@index([jobName, runAt])
 }
+
+model UserPattern {
+  id            String   @id @default(cuid())
+  pattern       String   // "rename {company} to {new_name}"
+  successRate   Float    @default(0)
+  usageCount    Int      @default(0)
+  lastUsed      DateTime @default(now())
+  examples      String[] // ["rename standard chartered to Cash", ...]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ActionHistory {
+  id          String   @id @default(cuid())
+  userInput   String
+  actionTaken String
+  success     Boolean
+  patternUsed String?
+  timestamp   DateTime @default(now())
+  metadata    Json?    // Store additional context
+}

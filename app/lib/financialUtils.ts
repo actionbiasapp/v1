@@ -36,4 +36,90 @@ export const calculateFinancialMetrics = (data: YearlyData[]): YearlyData[] => {
       returnPercent,
     };
   });
+};
+
+/**
+ * Calculate year-to-date portfolio performance
+ * @param yearlyData - Array of yearly financial data
+ * @param currentPortfolioValue - Current live portfolio value
+ * @returns Object with YTD performance metrics
+ */
+export const calculateYTDPerformance = (
+  yearlyData: YearlyData[],
+  currentPortfolioValue: number
+): {
+  totalGain: number;
+  percentageChange: number;
+  timeframe: string;
+  startingValue: number;
+} => {
+  const currentYear = new Date().getFullYear();
+  
+  // Find the previous year's net worth as starting point
+  const previousYearData = yearlyData.find(data => data.year === currentYear - 1);
+  const currentYearData = yearlyData.find(data => data.year === currentYear);
+  
+  if (!previousYearData) {
+    // No previous year data available
+    return {
+      totalGain: 0,
+      percentageChange: 0,
+      timeframe: "YTD (no baseline)",
+      startingValue: 0
+    };
+  }
+  
+  const startingValue = Number(previousYearData.netWorth) || 0;
+  
+  // Calculate YTD gains by subtracting previous year's net worth and this year's savings
+  const currentYearSavings = currentYearData ? Number(currentYearData.savings) || 0 : 0;
+  const totalGain = currentPortfolioValue - startingValue - currentYearSavings;
+  
+  // Calculate percentage change
+  const percentageChange = startingValue > 0 ? (totalGain / startingValue) * 100 : 0;
+  
+  return {
+    totalGain,
+    percentageChange,
+    timeframe: "YTD",
+    startingValue
+  };
+};
+
+/**
+ * Calculate overall portfolio gains (all time)
+ * @param yearlyData - Array of yearly financial data
+ * @param currentPortfolioValue - Current live portfolio value
+ * @returns Object with overall performance metrics
+ */
+export const calculateOverallGains = (
+  yearlyData: YearlyData[],
+  currentPortfolioValue: number
+): {
+  totalGain: number;
+  percentageChange: number;
+  totalSavings: number;
+} => {
+  if (!yearlyData || yearlyData.length === 0) {
+    return {
+      totalGain: 0,
+      percentageChange: 0,
+      totalSavings: 0
+    };
+  }
+  
+  // Calculate total savings across all years
+  const totalSavings = yearlyData.reduce((sum, data) => sum + Number(data.savings || 0), 0);
+  
+  // Overall gain is current value minus total savings
+  const totalGain = currentPortfolioValue - totalSavings;
+  
+  // Percentage change based on total savings as "investment"
+  const percentageChange = totalSavings > 0 ? (totalGain / totalSavings) * 100 : 0;
+  
+  return {
+    totalGain,
+    percentageChange,
+    totalSavings
+  };
 }; 

@@ -18,6 +18,7 @@ export interface AgentResponse {
   message: string;
   confidence: number;
   suggestions?: string[];
+  requires_confirmation?: boolean;
 }
 
 export interface IntentResult {

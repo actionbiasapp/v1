@@ -66,13 +66,31 @@ const INTENT_PATTERNS: IntentPattern[] = [
       /update\s+(\w+)\s+price\s+to\s+\$?(\d+(?:\.\d+)?)/i,
       /change\s+(\w+)\s+quantity\s+to\s+(\d+)/i,
       /edit\s+(\w+)\s+holding/i,
-      /modify\s+(\w+)\s+to\s+(\d+)\s+shares/i
+      /modify\s+(\w+)\s+to\s+(\d+)\s+shares/i,
+      /rename\s+(\w+)\s+to\s+(\w+)/i,
+      /move\s+(\w+)\s+to\s+(core|growth|hedge|liquidity)/i,
+      /change\s+(\w+)\s+category\s+to\s+(core|growth|hedge|liquidity)/i,
+      /set\s+(\w+)\s+(?:buy\s+)?price\s+to\s+\$?(\d+(?:,\d+)*(?:\.\d+)?)/i,
+      /set\s+(\w+)\s+current\s+price\s+to\s+\$?(\d+(?:,\d+)*(?:\.\d+)?)/i,
+      /set\s+(\w+)\s+quantity\s+to\s+(\d+(?:,\d+)*(?:\.\d+)?)/i,
+      /change\s+(\w+)\s+location\s+to\s+(.+)/i,
+      /enable\s+manual\s+pricing\s+for\s+(\w+)/i,
+      /disable\s+auto\s+pricing\s+for\s+(\w+)/i,
     ],
     entityExtractors: [
       (match) => ({ symbol: normalizeSymbol(match[1]), unitPrice: parseFloat(match[2]) }),
       (match) => ({ symbol: normalizeSymbol(match[1]), quantity: parseInt(match[2]) }),
       (match) => ({ symbol: normalizeSymbol(match[1]) }),
-      (match) => ({ symbol: normalizeSymbol(match[1]), quantity: parseInt(match[2]) })
+      (match) => ({ symbol: normalizeSymbol(match[1]), quantity: parseInt(match[2]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), newSymbol: normalizeSymbol(match[2]) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), category: match[2].charAt(0).toUpperCase() + match[2].slice(1) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), category: match[2].charAt(0).toUpperCase() + match[2].slice(1) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), unitPrice: parseFloat(match[2].replace(/,/g, '')) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), currentUnitPrice: parseFloat(match[2].replace(/,/g, '')) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), quantity: parseFloat(match[2].replace(/,/g, '')) }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), location: match[2].trim() }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), manualPricing: true }),
+      (match) => ({ symbol: normalizeSymbol(match[1]), manualPricing: false }),
     ]
   },
   

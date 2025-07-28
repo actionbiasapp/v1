@@ -114,7 +114,7 @@ export default function FinancialSetupButton({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           className={`
-            flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg border transition-all duration-200 font-medium text-sm
+            flex items-center gap-1.5 px-3 py-2.5 rounded-xl border transition-all duration-200 font-medium text-sm min-w-[44px] min-h-[44px]
             ${buttonClass}
             ${isHovered ? 'scale-105' : ''}
           `}
@@ -124,8 +124,7 @@ export default function FinancialSetupButton({
           
           <div className="flex flex-col items-start min-w-0">
             <span className="text-sm font-medium whitespace-nowrap">
-              <span className="hidden sm:inline">Financial Setup</span>
-              <span className="sm:hidden">Setup</span>
+              <span className="hidden xs:inline">Setup</span>
             </span>
           </div>
         </button>

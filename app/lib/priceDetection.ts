@@ -74,11 +74,13 @@ export class PriceDetectionService {
       const response = await fetch(`${this.FMP_BASE_URL}/quote/${symbol}?apikey=${this.FMP_API_KEY}`);
       const data = await response.json();
       if (data && data[0] && data[0].price) {
+        // Round to 2 decimal places for consistency
+        const roundedPrice = Math.round(data[0].price * 100) / 100;
         return {
           symbol,
           supportsAutoPricing: true,
           source: 'fmp',
-          currentPrice: data[0].price,
+          currentPrice: roundedPrice,
           currency: 'USD',
           confidence: 'high',
           assetType: 'stock'
@@ -103,11 +105,13 @@ export class PriceDetectionService {
       const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
       const data = await response.json();
       if (data[coinId]?.usd) {
+        // Round to 2 decimal places for consistency
+        const roundedPrice = Math.round(data[coinId].usd * 100) / 100;
         return {
           symbol,
           supportsAutoPricing: true,
           source: 'coingecko',
-          currentPrice: data[coinId].usd,
+          currentPrice: roundedPrice,
           currency: 'USD',
           confidence: 'high',
           companyName: this.getCryptoDisplayName(symbol),
@@ -134,11 +138,13 @@ export class PriceDetectionService {
         const response = await fetch(`${this.FMP_BASE_URL}/quote/${symbol}?apikey=${this.FMP_API_KEY}`);
         const data = await response.json();
         if (data && data[0] && data[0].price) {
+          // Round to 2 decimal places for consistency
+          const roundedPrice = Math.round(data[0].price * 100) / 100;
           return {
             symbol,
             supportsAutoPricing: true,
             source: 'fmp',
-            currentPrice: data[0].price,
+            currentPrice: roundedPrice,
             currency: 'USD',
             confidence: 'high',
             assetType: 'stock'
@@ -155,11 +161,13 @@ export class PriceDetectionService {
         const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
         const data = await response.json();
         if (data[coinId]?.usd) {
+          // Round to 2 decimal places for consistency
+          const roundedPrice = Math.round(data[coinId].usd * 100) / 100;
           return {
             symbol,
             supportsAutoPricing: true,
             source: 'coingecko',
-            currentPrice: data[coinId].usd,
+            currentPrice: roundedPrice,
             currency: 'USD',
             confidence: 'high',
             companyName: this.getCryptoDisplayName(symbol),

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { type CurrencyCode, formatCurrency, getHoldingDisplayValue } from '@/app/lib/currency';
+import { type CurrencyCode, formatCurrency, getHoldingDisplayValue, formatCurrencyDisplay } from '@/app/lib/currency';
 import { CategoryData, Holding, HoldingFormData } from '@/app/lib/types/shared';
 import { getProgressColor, createHolding, updateHolding, deleteHolding } from '@/app/lib/portfolioCRUD';
 import HoldingForm from './forms/HoldingForm';
@@ -44,7 +44,6 @@ const PortfolioCard = React.memo(({
   const [formData, setFormData] = useState<HoldingFormData>({
     symbol: '',
     name: '',
-    amount: 0,
     currency: 'SGD',
     location: ''
   });
@@ -60,7 +59,7 @@ const PortfolioCard = React.memo(({
 
   const handleStartAdding = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    setFormData({ symbol: '', name: '', amount: 0, currency: 'SGD', location: '' });
+    setFormData({ symbol: '', name: '', currency: 'SGD', location: '' });
     setAddingToCategory(true);
   }, []);
 
@@ -68,7 +67,6 @@ const PortfolioCard = React.memo(({
     setFormData({
       symbol: holding.symbol,
       name: holding.name,
-      amount: getHoldingDisplayValue(holding, holding.entryCurrency as CurrencyCode || 'SGD'),
       currency: (holding.entryCurrency as CurrencyCode) || 'SGD',
       location: holding.location,
       assetType: holding.assetType || 'stock',
@@ -83,7 +81,7 @@ const PortfolioCard = React.memo(({
   const handleCancelForm = useCallback(() => {
     setEditingHolding(null);
     setAddingToCategory(false);
-    setFormData({ symbol: '', name: '', amount: 0, currency: 'SGD', location: '' });
+    setFormData({ symbol: '', name: '', currency: 'SGD', location: '' });
   }, []);
 
   const handleFormDataChange = useCallback((data: HoldingFormData) => {
@@ -100,7 +98,7 @@ const PortfolioCard = React.memo(({
       }
 
       // Reset form and state
-      setFormData({ symbol: '', name: '', amount: 0, currency: 'SGD', location: '' });
+      setFormData({ symbol: '', name: '', currency: 'SGD', location: '' });
       setEditingHolding(null);
       setAddingToCategory(false);
       
@@ -217,7 +215,7 @@ const PortfolioCard = React.memo(({
                   }></span>
                 )}
               </span>
-              <span>{formatCurrency(getHoldingDisplayValue(holding, displayCurrency), displayCurrency, { compact: true, precision: 0 })}</span>
+              <span>{formatCurrencyDisplay(holding, displayCurrency)}</span>
             </div>
           ))}
           {category.holdings.length > 3 && (

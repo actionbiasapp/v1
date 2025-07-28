@@ -87,12 +87,36 @@ export function calculateHoldingValue(
       // No exchange rates available, use stored values
       currencyValue = getStoredValue(holding, displayCurrency);
     }
+    
+    // Validate consistency - log warnings if stored values don't match calculated
+    validateStoredValues(holding, currencyValue, displayCurrency);
   } else {
     // Fallback to stored values when quantity or currentPrice is not available
     currencyValue = getStoredValue(holding, displayCurrency);
   }
   
   return currencyValue;
+}
+
+/**
+ * Validate that stored values match calculated values
+ */
+function validateStoredValues(holding: Holding, calculatedValue: number, displayCurrency: CurrencyCode): void {
+  const storedValue = getStoredValue(holding, displayCurrency);
+  const difference = Math.abs(calculatedValue - storedValue);
+  const tolerance = 0.01; // 1 cent tolerance for floating point errors
+  
+  if (difference > tolerance) {
+    console.warn(`⚠️ Value mismatch for ${holding.symbol}:`, {
+      calculated: calculatedValue,
+      stored: storedValue,
+      difference: difference.toFixed(2),
+      currency: displayCurrency,
+      quantity: holding.quantity,
+      currentUnitPrice: holding.currentUnitPrice,
+      unitPrice: holding.unitPrice
+    });
+  }
 }
 
 /**

@@ -1,10 +1,9 @@
 
 'use client';
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
-import { type CurrencyCode } from '@/app/lib/currency';
+import React, { useState, useCallback, useMemo } from 'react';
+import { type CurrencyCode, formatCurrency, formatNumberWithSeparators } from '@/app/lib/currency';
 import { HoldingFormData } from '@/app/lib/types/shared';
-import CurrencySelector from '../CurrencySelector';
 import HoldingConfirmation, { ConfirmedHoldingData } from '../HoldingConfirmation';
 import { PriceDetectionResult } from '../../lib/priceDetection';
 import { WeightedAverageResult, calculateWeightedAverage } from '../../lib/weightedAverage';
@@ -32,41 +31,49 @@ const HoldingForm = React.memo(({
   const [priceDetectionLoading, setPriceDetectionLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [weightedAverage, setWeightedAverage] = useState<WeightedAverageResult | null>(null);
-  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
-  const [lastChanged, setLastChanged] = useState<'quantity' | 'unitPrice' | 'amount' | null>(null);
+  const [marketPriceLoading, setMarketPriceLoading] = useState(false);
+  const [marketPriceError, setMarketPriceError] = useState<string | null>(null);
 
-  // Stable event handlers
+  // Calculate totals in real-time
+  const totalBuyValue = (formData.quantity || 0) * (formData.unitPrice || 0);
+  const totalCurrentValue = (formData.quantity || 0) * (formData.currentUnitPrice || 0);
+  const profitLoss = totalCurrentValue - totalBuyValue;
+  const profitLossPercent = totalBuyValue > 0 ? (profitLoss / totalBuyValue) * 100 : 0;
+  const showProfitLoss = formData.quantity && formData.unitPrice && formData.currentUnitPrice;
+
+  // Auto-set manual pricing when asset type is manual
+  const handleAssetTypeChange = useCallback((assetType: 'stock' | 'crypto' | 'manual') => {
+    const manualPricing = assetType === 'manual';
+    onFormDataChange({ ...formData, assetType, manualPricing });
+  }, [formData, onFormDataChange]);
+
+  // Event handlers - NO DEBOUNCE for immediate response
   const handleSymbolChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const symbol = e.target.value.toUpperCase();
     onFormDataChange({ ...formData, symbol });
 
-    if (debounceTimeout.current) {
-      clearTimeout(debounceTimeout.current);
-    }
-    
     if (symbol.length >= 2) {
       setPriceDetectionLoading(true);
-      debounceTimeout.current = setTimeout(async () => {
-      try {
-        const response = await fetch('/api/prices/detect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+      setTimeout(async () => {
+        try {
+          const response = await fetch('/api/prices/detect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ symbol, assetType: formData.assetType })
-        });
-        const detection = await response.json();
-        setPriceDetection(detection);
-        
-          // Always update company name when a new one is detected
+          });
+          const detection = await response.json();
+          setPriceDetection(detection);
+          
           if (detection.companyName) {
-          onFormDataChange({ ...formData, symbol, name: detection.companyName });
+            onFormDataChange({ ...formData, symbol, name: detection.companyName });
           }
         } catch (error) {
-        console.error('Price detection failed:', error);
-        setPriceDetection(null);
-      } finally {
-        setPriceDetectionLoading(false);
-      }
-      }, 400); // 400ms debounce
+          console.error('Price detection failed:', error);
+          setPriceDetection(null);
+        } finally {
+          setPriceDetectionLoading(false);
+        }
+      }, 400);
     } else {
       setPriceDetection(null);
     }
@@ -84,26 +91,72 @@ const HoldingForm = React.memo(({
     onFormDataChange({ ...formData, currency });
   }, [formData, onFormDataChange]);
 
-  const handleAmountChange = useCallback((amount: number) => {
-    onFormDataChange({ ...formData, amount });
+  const handleQuantityChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const quantity = e.target.value === '' ? undefined : parseFloat(e.target.value);
+    onFormDataChange({ ...formData, quantity });
+  }, [formData, onFormDataChange]);
+
+  const handleBuyPriceChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const unitPrice = e.target.value === '' ? undefined : parseFloat(e.target.value);
+    onFormDataChange({ ...formData, unitPrice });
+  }, [formData, onFormDataChange]);
+
+  const handleCurrentPriceChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const currentUnitPrice = e.target.value === '' ? undefined : parseFloat(e.target.value);
+    onFormDataChange({ ...formData, currentUnitPrice });
+  }, [formData, onFormDataChange]);
+
+  const handleGetMarketPrice = useCallback(async () => {
+    if (!formData.symbol || formData.assetType === 'manual') return;
+    
+    setMarketPriceLoading(true);
+    setMarketPriceError(null);
+    
+    try {
+      const response = await fetch('/api/prices/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          symbol: formData.symbol, 
+          assetType: formData.assetType 
+        })
+      });
+      
+      const data = await response.json();
+      if (data.currentPrice) {
+        // Round to 2 decimal places for form compatibility
+        const roundedPrice = Math.round(data.currentPrice * 100) / 100;
+        onFormDataChange({ 
+          ...formData, 
+          currentUnitPrice: roundedPrice,
+          unitPrice: roundedPrice // Also set unitPrice for validation
+        });
+      } else {
+        setMarketPriceError('Unable to fetch data at this time');
+      }
+    } catch (error) {
+      console.error('Failed to get market price:', error);
+      setMarketPriceError('Unable to fetch data at this time');
+    } finally {
+      setMarketPriceLoading(false);
+    }
   }, [formData, onFormDataChange]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.symbol || !formData.name || !formData.amount) return;
+    if (!formData.symbol || !formData.name || !formData.location) return;
     
     // If we have price detection and this is an "add" operation, show confirmation
     if (!holdingId && priceDetection && priceDetection.supportsAutoPricing) {
       try {
         const avgResult = await calculateWeightedAverage(
           formData.symbol,
-          formData.amount / (priceDetection.currentPrice || 1),
-          priceDetection.currentPrice || 0,
-          formData.amount,
+          formData.quantity || 0,
+          formData.unitPrice || 0,
+          (formData.quantity || 0) * (formData.unitPrice || 0),
           formData.currency
         );
-        
         setWeightedAverage(avgResult);
         setShowConfirmation(true);
         return;
@@ -112,261 +165,285 @@ const HoldingForm = React.memo(({
       }
     }
     
-    // Direct submit for edits or non-auto-pricing holdings
     onSubmit(categoryName, holdingId);
-  }, [categoryName, holdingId, onSubmit, formData, priceDetection]);
+  }, [formData, holdingId, priceDetection, onSubmit, categoryName]);
 
-  const handleConfirmation = useCallback((confirmedData: ConfirmedHoldingData) => {
-    // Update form data with confirmed pricing details
-    onFormDataChange({
-      ...formData,
-      quantity: confirmedData.quantity,
-      unitPrice: confirmedData.unitPrice,
-      amount: confirmedData.totalCost
-    });
-    
-    setShowConfirmation(false);
-    onSubmit(categoryName, holdingId);
-  }, [formData, onFormDataChange, onSubmit, categoryName, holdingId]);
+  // Validation
+  const hasWarnings = useMemo(() => {
+    if (formData.unitPrice && formData.currentUnitPrice) {
+      const priceDrop = ((formData.unitPrice - formData.currentUnitPrice) / formData.unitPrice) * 100;
+      return priceDrop > 90;
+    }
+    return false;
+  }, [formData.unitPrice, formData.currentUnitPrice]);
 
-  const handleCancelConfirmation = useCallback(() => {
-    setShowConfirmation(false);
-    setWeightedAverage(null);
-  }, []);
+  const isValid = formData.symbol && 
+                  formData.name && 
+                  formData.quantity && 
+                  formData.unitPrice && 
+                  formData.location;
 
-  // Stable styles with proper containment
-  const containerStyle = useMemo(() => ({
-    contain: 'layout style' as const,
-    isolation: 'isolate' as const
-  }), []);
-
-  const gridStyle = useMemo(() => ({
-    display: 'grid' as const,
-    gridTemplateColumns: 'repeat(2, 1fr)' as const,
-    gap: '0.75rem',
-    contain: 'layout' as const
-  }), []);
-
-  const inputStyle = useMemo(() => ({
-    minHeight: '40px',
-    boxSizing: 'border-box' as const
-  }), []);
-
-  // Show confirmation dialog if needed
-  if (showConfirmation && priceDetection && weightedAverage) {
+  if (showConfirmation && weightedAverage && priceDetection) {
     return (
-      <div style={containerStyle}>
-        <HoldingConfirmation
-          symbol={formData.symbol}
-          name={formData.name}
-          totalAmount={formData.amount}
-          currency={formData.currency}
-          priceDetection={priceDetection}
-          weightedAverage={weightedAverage}
-          onConfirm={handleConfirmation}
-          onEdit={handleCancelConfirmation}
-          onCancel={handleCancelConfirmation}
-        />
-      </div>
+      <HoldingConfirmation
+        symbol={formData.symbol}
+        name={formData.name}
+        totalAmount={formData.quantity ? formData.quantity * (formData.unitPrice || 0) : 0}
+        currency={formData.currency}
+        priceDetection={priceDetection}
+        weightedAverage={weightedAverage}
+        onConfirm={(confirmedData) => {
+          onFormDataChange({
+            ...formData,
+            _confirmedQuantity: confirmedData.quantity,
+            _confirmedUnitPrice: confirmedData.unitPrice,
+            _confirmedTotalCost: confirmedData.totalCost
+          });
+          
+          setShowConfirmation(false);
+          onSubmit(categoryName, holdingId);
+        }}
+        onEdit={() => setShowConfirmation(false)}
+        onCancel={() => setShowConfirmation(false)}
+      />
     );
   }
 
   return (
-    <div 
-      className="bg-slate-800 rounded-lg p-4 border border-slate-600 mb-4"
-      style={containerStyle}
-    >
-      <h4 className="text-white font-medium mb-3">
+    <div className="bg-slate-800 rounded-lg p-4 border border-slate-600 mb-4">
+      <h4 className="text-white font-medium mb-4">
         {holdingId ? 'Edit Holding' : `Add to ${categoryName}`}
       </h4>
       
-      <form onSubmit={handleSubmit}>
-        <div className="space-y-3 mb-4">
-          {/* Asset Type Selector */}
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-slate-300 mb-1">
-              Asset Type
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Symbol and Company Name - First row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Symbol
             </label>
-            <select
-              value={formData.assetType || 'stock'}
-              onChange={e => onFormDataChange({ ...formData, assetType: e.target.value as 'stock' | 'crypto' | 'manual' })}
-              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
-              disabled={loading}
-            >
-              <option value="stock">Stock (FMP API)</option>
-              <option value="crypto">Crypto (CoinGecko)</option>
-              <option value="manual">Manual Entry</option>
-            </select>
-          </div>
-          <div style={gridStyle}>
             <input
               type="text"
-              placeholder="Symbol (e.g., AAPL)"
+              placeholder="e.g., AAPL"
               value={formData.symbol}
               onChange={handleSymbolChange}
               className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
               autoComplete="off"
               disabled={loading}
-              style={inputStyle}
             />
-            
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Company Name
+            </label>
             <input
               type="text"
-              placeholder="Company Name"
+              placeholder="e.g., Apple Inc"
               value={formData.name}
               onChange={handleNameChange}
               className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
               autoComplete="off"
               disabled={loading}
-              style={inputStyle}
             />
           </div>
+        </div>
 
-          {/* New: Quantity and Unit Price fields with auto-calc logic */}
-          <div style={gridStyle}>
+        {/* Asset Type, Quantity, Currency, and Market Price Button - Second row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="sm:col-span-1">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Asset Type
+            </label>
+            <select
+              value={formData.assetType || 'stock'}
+              onChange={e => handleAssetTypeChange(e.target.value as 'stock' | 'crypto' | 'manual')}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px]"
+              disabled={loading}
+            >
+              <option value="stock">Stock</option>
+              <option value="crypto">Crypto</option>
+              <option value="manual">Manual</option>
+            </select>
+          </div>
+          
+          <div className="sm:col-span-1">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Quantity
+            </label>
             <input
               type="number"
-              placeholder="Quantity"
+              placeholder="Qty"
               value={formData.quantity ?? ''}
-              onChange={e => {
-                let quantity = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                setLastChanged('quantity');
-                let unitPrice = formData.unitPrice;
-                let amount = formData.amount;
-                if (quantity !== undefined && unitPrice !== undefined) {
-                  amount = parseFloat((unitPrice * quantity).toFixed(2));
-                } else if (quantity !== undefined && amount !== undefined && lastChanged !== 'unitPrice') {
-                  unitPrice = parseFloat((amount / quantity).toFixed(4));
-                }
-                onFormDataChange({ ...formData, quantity, unitPrice, amount });
-              }}
-              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
-              autoComplete="off"
-              disabled={loading}
-              style={inputStyle}
-              onWheel={e => e.currentTarget.blur()}
+              onChange={handleQuantityChange}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px]"
+              min="0.01"
               step="0.01"
-              min="0"
-            />
-            <input
-              type="number"
-              placeholder={`Unit Price (${formData.currency})`}
-              value={formData.unitPrice ?? ''}
-              onChange={e => {
-                let unitPrice = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                setLastChanged('unitPrice');
-                let quantity = formData.quantity;
-                let amount = formData.amount;
-                if (unitPrice !== undefined && quantity !== undefined) {
-                  amount = parseFloat((unitPrice * quantity).toFixed(2));
-                } else if (unitPrice !== undefined && amount !== undefined && lastChanged !== 'quantity') {
-                  quantity = parseFloat((amount / unitPrice).toFixed(4));
-                }
-                onFormDataChange({ ...formData, unitPrice, quantity, amount });
-              }}
-              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
-              autoComplete="off"
               disabled={loading}
-              style={inputStyle}
-              onWheel={e => e.currentTarget.blur()}
-              step="0.01"
-              min="0"
             />
           </div>
           
-          {/* Manual price override option */}
-          <div className="flex items-center gap-2 mb-2">
-            <input
-              type="checkbox"
-              id="manualPricing"
-              checked={formData.manualPricing || false}
-              onChange={e => onFormDataChange({ ...formData, manualPricing: e.target.checked })}
-              className="w-4 h-4 text-blue-600 bg-slate-700 border-slate-600 rounded focus:ring-blue-500"
-            />
-            <label htmlFor="manualPricing" className="text-sm text-slate-300">
-              Manual pricing (disable API updates)
+          <div className="sm:col-span-1">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Currency
             </label>
-          </div>
-
-          {/* Manual current price input */}
-          {formData.manualPricing && (
-            <div style={gridStyle}>
-                          <input
-              type="number"
-              placeholder={`Current Price (${formData.currency})`}
-              value={formData.currentUnitPrice ?? ''}
-              onChange={e => {
-                const currentUnitPrice = e.target.value === '' ? undefined : parseFloat(e.target.value);
-                onFormDataChange({ ...formData, currentUnitPrice });
-              }}
-              className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
-              autoComplete="off"
+            <select
+              value={formData.currency}
+              onChange={e => handleCurrencyChange(e.target.value as CurrencyCode)}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px]"
               disabled={loading}
-              style={inputStyle}
-              onWheel={e => e.currentTarget.blur()}
-              step="0.01"
-              min="0"
-            />
-            </div>
-          )}
+            >
+              <option value="SGD">🇸🇬 SGD</option>
+              <option value="USD">🇺🇸 USD</option>
+              <option value="INR">🇮🇳 INR</option>
+            </select>
+          </div>
+          
+          {/* Market Price Button */}
+          <div className="sm:col-span-1">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Market Price
+            </label>
+            <button
+              type="button"
+              onClick={handleGetMarketPrice}
+              disabled={loading || marketPriceLoading || formData.assetType === 'manual' || !formData.symbol}
+              className="w-full h-[44px] bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium flex items-center justify-center gap-2 transition-all duration-200"
+              title="Get Market Price"
+            >
+              {marketPriceLoading ? (
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+              ) : (
+                <span className="text-base">📈</span>
+              )}
+              <span className="hidden sm:inline">Get Price</span>
+            </button>
+          </div>
+        </div>
 
-          {/* Price detection indicator */}
-          {!formData.manualPricing && priceDetectionLoading && (
-            <div className="text-xs text-blue-400">🔍 Checking pricing...</div>
-          )}
-          {!formData.manualPricing && priceDetection && !priceDetectionLoading && (
-            <div className="text-xs">
-              {priceDetection.supportsAutoPricing ? (
-                <span className="text-green-400">
-                  🟢 Auto-pricing: ${priceDetection.currentPrice?.toFixed(2)} ({priceDetection.source.toUpperCase()})
+        {/* Buy Price, Current Price, and Profit/Loss - Third row, compact layout */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Buy Price
+            </label>
+            <input
+              type="number"
+              placeholder="Buy price"
+              value={formData.unitPrice ?? ''}
+              onChange={handleBuyPriceChange}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px]"
+              min="0.01"
+              step="0.01"
+              disabled={loading}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Current Price
+            </label>
+            <input
+              type="number"
+              placeholder="Current price"
+              value={formData.currentUnitPrice ?? ''}
+              onChange={handleCurrentPriceChange}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px]"
+              min="0.01"
+              step="0.01"
+              disabled={loading}
+            />
+            {marketPriceError && (
+              <div className="text-xs text-red-400 mt-1">
+                {marketPriceError}
+              </div>
+            )}
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Profit/Loss
+            </label>
+            <div className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px] flex items-center">
+              {showProfitLoss ? (
+                <span className={`${profitLoss >= 0 ? 'text-green-400' : 'text-red-400'} text-sm`}>
+                  {profitLoss >= 0 ? '+' : ''}{formatNumberWithSeparators(profitLoss)} {formData.currency}
+                  <span className="text-slate-300 ml-1">
+                    ({profitLoss >= 0 ? '+' : ''}{profitLossPercent.toFixed(1)}%)
+                  </span>
                 </span>
               ) : (
-                <span className="text-amber-400">
-                  🔄 Manual pricing required
-                </span>
+                <span className="text-slate-400 text-sm">-</span>
               )}
             </div>
-          )}
-          
-          <div style={inputStyle}>
-            <CurrencySelector
-              value={formData.amount}
-              currency={formData.currency}
-              onValueChange={val => {
-                setLastChanged('amount');
-                let amount = val;
-                let quantity = formData.quantity;
-                let unitPriceLocal = formData.unitPrice;
-                if (amount !== undefined && quantity !== undefined && lastChanged !== 'unitPrice') {
-                  unitPriceLocal = quantity ? parseFloat((amount / quantity).toFixed(4)) : undefined;
-                } else if (amount !== undefined && unitPriceLocal !== undefined && lastChanged !== 'quantity') {
-                  quantity = unitPriceLocal ? parseFloat((amount / unitPriceLocal).toFixed(4)) : undefined;
-                }
-                onFormDataChange({ ...formData, amount, quantity, unitPrice: unitPriceLocal });
-              }}
-              onCurrencyChange={handleCurrencyChange}
-              label="Amount"
+          </div>
+        </div>
+
+        {/* Location and Category - Fourth row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Location
+            </label>
+            <input
+              type="text"
+              placeholder="e.g., IBKR, DBS, Physical"
+              value={formData.location}
+              onChange={handleLocationChange}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px]"
+              autoComplete="off"
               disabled={loading}
             />
           </div>
           
-          <input
-            type="text"
-            placeholder="Location (e.g., IBKR)"
-            value={formData.location}
-            onChange={handleLocationChange}
-            className="w-full bg-slate-700 text-white border border-slate-600 rounded px-3 py-2 text-sm"
-            autoComplete="off"
-            disabled={loading}
-            style={inputStyle}
-          />
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Category
+            </label>
+            <select
+              value={formData.category || categoryName}
+              onChange={e => onFormDataChange({ ...formData, category: e.target.value })}
+              className="w-full bg-slate-700 text-white border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px]"
+              disabled={loading}
+            >
+              <option value="Core">Core</option>
+              <option value="Growth">Growth</option>
+              <option value="Hedge">Hedge</option>
+              <option value="Liquidity">Liquidity</option>
+            </select>
+          </div>
         </div>
+
+        {/* Validation warnings */}
+        {hasWarnings && (
+          <div className="text-amber-400 text-sm p-3 bg-amber-900/20 border border-amber-600/30 rounded">
+            ⚠️ Current price is more than 90% below buy price. Please verify.
+          </div>
+        )}
+
+        {/* Price detection indicator */}
+        {!formData.manualPricing && priceDetectionLoading && (
+          <div className="text-xs text-blue-400">🔍 Checking pricing...</div>
+        )}
+        {!formData.manualPricing && priceDetection && !priceDetectionLoading && (
+          <div className="text-xs">
+            {priceDetection.supportsAutoPricing ? (
+              <span className="text-green-400">
+                🟢 Auto-pricing: ${priceDetection.currentPrice?.toFixed(2)} ({priceDetection.source.toUpperCase()})
+              </span>
+            ) : (
+              <span className="text-amber-400">
+                🔄 Manual pricing required
+              </span>
+            )}
+          </div>
+        )}
         
         <div className="flex gap-2">
           <button
             type="submit"
-            disabled={loading || !formData.symbol || !formData.name || !formData.amount || !formData.location}
-            className="bg-emerald-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            disabled={loading || !isValid}
+            className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md min-h-[44px]"
           >
             {loading ? 'Saving...' : holdingId ? 'Update' : (showConfirmation ? 'Review Details' : 'Add Holding')}
           </button>
@@ -374,7 +451,7 @@ const HoldingForm = React.memo(({
           <button
             type="button"
             onClick={onCancel}
-            className="bg-slate-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-slate-700 transition-colors"
+            className="bg-slate-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-slate-700 transition-all duration-200 shadow-sm hover:shadow-md min-h-[44px]"
           >
             Cancel
           </button>

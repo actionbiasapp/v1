@@ -107,19 +107,21 @@ export interface EditFormData {
 export interface HoldingFormData {
   symbol: string;
   name: string;
-  amount: number;
   currency: 'SGD' | 'USD' | 'INR';
   location: string;
   quantity?: number;
   unitPrice?: number;
-  currentUnitPrice?: number; // NEW: Manual current price override
-  manualPricing?: boolean; // NEW: Disable API updates
+  currentUnitPrice?: number; // Manual current price override
+  manualPricing?: boolean; // Disable API updates
   _confirmedQuantity?: number;
   _confirmedUnitPrice?: number;
   _confirmedTotalCost?: number;
   _priceSource?: string;
   _enableAutoPricing?: boolean;
-  assetType?: 'stock' | 'crypto' | 'manual'; // NEW
+  assetType?: 'stock' | 'crypto' | 'manual';
+  // Comprehensive editing fields
+  newSymbol?: string; // For renaming holdings
+  category?: string; // For changing categories
 }
 
 export interface PortfolioCardProps {

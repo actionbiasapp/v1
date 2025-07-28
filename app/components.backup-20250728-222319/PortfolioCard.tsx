@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { type CurrencyCode, formatCurrency, getHoldingDisplayValue } from '@/app/lib/currency';
+import { type CurrencyCode, formatCurrency, getHoldingDisplayValue, formatCurrencyDisplay } from '@/app/lib/currency';
 import { CategoryData, Holding, HoldingFormData } from '@/app/lib/types/shared';
 import { getProgressColor, createHolding, updateHolding, deleteHolding } from '@/app/lib/portfolioCRUD';
 import HoldingForm from './forms/HoldingForm';
@@ -44,7 +44,6 @@ const PortfolioCard = React.memo(({
   const [formData, setFormData] = useState<HoldingFormData>({
     symbol: '',
     name: '',
-    amount: 0,
     currency: 'SGD',
     location: ''
   });
@@ -60,7 +59,7 @@ const PortfolioCard = React.memo(({
 
   const handleStartAdding = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    setFormData({ symbol: '', name: '', amount: 0, currency: 'SGD', location: '' });
+    setFormData({ symbol: '', name: '', currency: 'SGD', location: '' });
     setAddingToCategory(true);
   }, []);
 
@@ -68,7 +67,6 @@ const PortfolioCard = React.memo(({
     setFormData({
       symbol: holding.symbol,
       name: holding.name,
-      amount: getHoldingDisplayValue(holding, holding.entryCurrency as CurrencyCode || 'SGD'),
       currency: (holding.entryCurrency as CurrencyCode) || 'SGD',
       location: holding.location,
       assetType: holding.assetType || 'stock',
@@ -83,7 +81,7 @@ const PortfolioCard = React.memo(({
   const handleCancelForm = useCallback(() => {
     setEditingHolding(null);
     setAddingToCategory(false);
-    setFormData({ symbol: '', name: '', amount: 0, currency: 'SGD', location: '' });
+    setFormData({ symbol: '', name: '', currency: 'SGD', location: '' });
   }, []);
 
   const handleFormDataChange = useCallback((data: HoldingFormData) => {
@@ -100,12 +98,22 @@ const PortfolioCard = React.memo(({
       }
 
       // Reset form and state
-      setFormData({ symbol: '', name: '', amount: 0, currency: 'SGD', location: '' });
+      setFormData({ symbol: '', name: '', currency: 'SGD', location: '' });
       setEditingHolding(null);
       setAddingToCategory(false);
       
-      // Refresh holdings data
-      if (onHoldingsUpdate) onHoldingsUpdate();
+      // Refresh holdings data and ensure proper scroll position
+      if (onHoldingsUpdate) {
+        onHoldingsUpdate();
+        
+        // Small delay to ensure DOM updates, then scroll to top of holdings
+        setTimeout(() => {
+          const holdingsSection = document.querySelector('.fixed-portfolio-grid');
+          if (holdingsSection) {
+            holdingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      }
       
     } catch (error) {
       console.error('Error saving holding:', error);
@@ -207,7 +215,7 @@ const PortfolioCard = React.memo(({
                   }></span>
                 )}
               </span>
-              <span>{formatCurrency(getHoldingDisplayValue(holding, displayCurrency), displayCurrency, { compact: true, precision: 0 })}</span>
+              <span>{formatCurrencyDisplay(holding, displayCurrency)}</span>
             </div>
           ))}
           {category.holdings.length > 3 && (
@@ -236,38 +244,20 @@ const PortfolioCard = React.memo(({
             </div>
           )}
 
-          {/* Recommended Actions - moved here */}
-          <div className="mb-4">
-            {category.status === 'perfect' && (
-              <div className="text-green-400 text-sm">
-                ✅ Allocation is optimal. Hold steady and continue regular contributions.
-              </div>
-            )}
-            {category.status === 'underweight' && (
-              <div className="text-yellow-400 text-sm">
-                ⚠️ Add {formatCurrency(Math.abs(category.gapAmount), displayCurrency, { compact: true, precision: 0 })} to reach target
-              </div>
-            )}
-            {category.status === 'excess' && (
-              <div className="text-red-400 text-sm">
-                🔴 Trim {formatCurrency(Math.abs(category.gapAmount), displayCurrency, { compact: true, precision: 0 })} excess
-              </div>
+          {/* Compact Header with Add Button */}
+          <div className="flex items-center justify-between mb-3">
+            <h4 style={{ color: '#34d399', margin: 0, fontSize: '0.875rem' }}>
+              Holdings ({category.holdings.length})
+            </h4>
+            {!addingToCategory && (
+              <button
+                onClick={handleStartAdding}
+                className="bg-emerald-600 text-white py-0.5 px-2 rounded text-xs font-medium hover:bg-emerald-700 transition-colors"
+              >
+                Add Holdings
+              </button>
             )}
           </div>
-
-          {/* Add Holding Button */}
-          {!addingToCategory && (
-            <button
-              onClick={handleStartAdding}
-              className="w-full bg-emerald-600 text-white py-2 px-4 rounded mb-4 text-sm font-medium hover:bg-emerald-700 transition-colors"
-            >
-              + Add Holding to {category.name}
-            </button>
-          )}
-
-          <h4 style={{ color: '#34d399', marginBottom: '1rem' }}>
-            All Holdings ({category.holdings.length})
-          </h4>
           
           <div className="all-holdings">
             {category.holdings.map((holding) => (
@@ -298,8 +288,6 @@ const PortfolioCard = React.memo(({
               </div>
             ))}
           </div>
-
-
         </div>
       )}
     </div>

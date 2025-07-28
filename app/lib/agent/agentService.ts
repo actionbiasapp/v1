@@ -9,10 +9,11 @@ import {
   ExtractedHoldingData,
   ExtractedYearlyData
 } from './types';
-import { LLMService } from './llmService';
+import { LLMService, LLMResponse } from './llmService';
 import { QuickQueryHandler } from './quickQueries';
 import { DataValidator } from './validator';
 import { SmartHoldingMatcher, SmartMatchResult } from './smartMatching';
+import { ContextProvider, RichContext } from './contextProvider';
 import { type CurrencyCode } from '@/app/lib/currency';
 import { PrismaClient } from '@prisma/client';
 
@@ -41,17 +42,39 @@ export class PortfolioAgent {
         };
       }
       
+      // Build rich context for LLM
+      const richContext = await ContextProvider.buildRichContext(
+        message,
+        undefined, // userSelection
+        context.currentHoldings || [],
+        context.yearlyData || [],
+        context.financialProfile
+      );
+      
       // Use LLM for intent recognition and data extraction
-      const llmResponse = await LLMService.processWithFallback(message, context);
+      const llmResponse = await LLMService.processMessage(message, richContext);
+      
+      // Convert LLMResponse to AgentResponse format
+      const agentResponse: AgentResponse = {
+        action: llmResponse.action as any,
+        data: {
+          intent: llmResponse.intent,
+          entities: llmResponse.entities
+        },
+        message: llmResponse.message,
+        confidence: llmResponse.confidence,
+        suggestions: llmResponse.suggestions,
+        requires_confirmation: llmResponse.requires_confirmation
+      };
       
       // If LLM couldn't understand, return the clarification response
       if (llmResponse.action === 'clarify' || llmResponse.action === 'error') {
-        return llmResponse;
+        return agentResponse;
       }
       
       // For confirmation actions, validate the extracted data
-      if (llmResponse.action === 'confirm' && llmResponse.data) {
-        const { intent, entities } = llmResponse.data;
+      if (llmResponse.action === 'confirm' && agentResponse.data) {
+        const { intent, entities } = agentResponse.data;
         
         // Validate based on intent type
         let validation: ValidationResult;
@@ -120,7 +143,7 @@ export class PortfolioAgent {
             return this.generatePortfolioAnalysis(context);
             
           default:
-            return llmResponse;
+            return agentResponse;
         }
         
         // If validation failed, return clarification
@@ -135,8 +158,8 @@ export class PortfolioAgent {
         }
       }
       
-      // Return the LLM response (either confirmation or analysis)
-      return llmResponse;
+      // Return the agent response (either confirmation or analysis)
+      return agentResponse;
       
     } catch (error) {
       console.error('Agent processing error:', error);
@@ -207,38 +230,9 @@ export class PortfolioAgent {
         valueSGD = totalValue;
       }
       
-      // Get or create user (for testing - using default user)
-      let user = await prisma.user.findFirst({
-        where: { id: 'default-user' }
-      });
-      
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            id: 'default-user',
-            email: 'default@example.com',
-            name: 'Default User'
-          }
-        });
-      }
-      
-      // Get or create category
-      let category = await prisma.assetCategory.findFirst({
-        where: { 
-          name: data.category || 'Growth',
-          userId: user.id
-        }
-      });
-      
-      if (!category) {
-        category = await prisma.assetCategory.create({
-          data: {
-            name: data.category || 'Growth',
-            targetPercentage: 25,
-            userId: user.id
-          }
-        });
-      }
+      // Get or create user and category using shared utilities
+      const user = await this.getOrCreateDefaultUser();
+      const category = await this.getOrCreateCategory(data.category, user.id);
       
       // Check if holding already exists
       const existingHolding = await prisma.holdings.findFirst({
@@ -346,20 +340,8 @@ export class PortfolioAgent {
   
   private static async executeEditHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
     try {
-      // Get or create user (for testing - using default user)
-      let user = await prisma.user.findFirst({
-        where: { id: 'default-user' }
-      });
-      
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            id: 'default-user',
-            email: 'default@example.com',
-            name: 'Default User'
-          }
-        });
-      }
+      // Get or create user using shared utility
+      const user = await this.getOrCreateDefaultUser();
 
       // Find the existing holding by exact symbol
       const holding = await prisma.holdings.findFirst({
@@ -378,6 +360,67 @@ export class PortfolioAgent {
       // Update the holding with new values
       const updateData: any = {};
       
+      // Handle symbol rename
+      if (data.newSymbol && data.newSymbol !== data.symbol) {
+        // Check if new symbol already exists
+        const existingHolding = await prisma.holdings.findFirst({
+          where: {
+            symbol: data.newSymbol,
+            id: { not: holding.id } // Exclude current holding
+          }
+        });
+        
+        if (existingHolding) {
+          return { 
+            success: false, 
+            message: `Symbol ${data.newSymbol} already exists in your portfolio. Please use a different symbol.` 
+          };
+        }
+        
+        updateData.symbol = data.newSymbol;
+      }
+      
+      // Handle company name updates
+      if (data.name !== undefined) {
+        updateData.name = data.name;
+      }
+      
+      // Handle asset type updates
+      if (data.assetType !== undefined) {
+        updateData.assetType = data.assetType;
+      }
+      
+      // Handle category updates
+      if (data.category !== undefined) {
+        // Validate category
+        const validCategories = ['Core', 'Growth', 'Hedge', 'Liquidity'];
+        if (!validCategories.includes(data.category)) {
+          return { 
+            success: false, 
+            message: `Invalid category: ${data.category}. Valid categories are: ${validCategories.join(', ')}` 
+          };
+        }
+        
+        // Find category in database
+        const category = await prisma.assetCategory.findFirst({
+          where: { name: data.category }
+        });
+        
+        if (!category) {
+          return { 
+            success: false, 
+            message: `Category ${data.category} not found in database.` 
+          };
+        }
+        
+        updateData.categoryId = category.id;
+      }
+      
+      // Handle location updates
+      if (data.location !== undefined) {
+        updateData.location = data.location;
+      }
+      
       // Handle buy price (unitPrice) updates
       if (data.unitPrice !== undefined) {
         updateData.unitPrice = data.unitPrice;
@@ -393,6 +436,25 @@ export class PortfolioAgent {
         updateData.currentUnitPrice = data.currentUnitPrice;
         updateData.priceUpdated = new Date();
         updateData.priceSource = 'manual'; // Since user manually updated
+        
+        // Recalculate stored values to ensure consistency
+        const quantity = Number(holding.quantity) || 0;
+        const totalValue = quantity * data.currentUnitPrice;
+        
+        // Use proper currency conversion based on entry currency
+        if (holding.entryCurrency === 'SGD') {
+          updateData.valueSGD = totalValue;
+          updateData.valueUSD = totalValue / 1.35;
+          updateData.valueINR = totalValue * 83;
+        } else if (holding.entryCurrency === 'USD') {
+          updateData.valueUSD = totalValue;
+          updateData.valueSGD = totalValue * 1.35;
+          updateData.valueINR = totalValue * 83;
+        } else if (holding.entryCurrency === 'INR') {
+          updateData.valueINR = totalValue;
+          updateData.valueSGD = totalValue / 83;
+          updateData.valueUSD = totalValue / 83 / 1.35;
+        }
       }
       
       // Handle quantity updates
@@ -404,6 +466,11 @@ export class PortfolioAgent {
         updateData.valueSGD = data.quantity * unitPrice * 1.35;
         updateData.valueINR = data.quantity * unitPrice * 83;
       }
+      
+      // Handle manual pricing toggle
+      if (data.manualPricing !== undefined) {
+        updateData._enableAutoPricing = !data.manualPricing;
+      }
 
       await prisma.holdings.update({
         where: { id: holding.id },
@@ -411,10 +478,15 @@ export class PortfolioAgent {
       });
 
       // Build success message
-      let message = `Successfully updated ${holding.symbol}.`;
+      let message = `Successfully updated ${data.newSymbol || holding.symbol}.`;
+      if (data.newSymbol && data.newSymbol !== data.symbol) message += ` Renamed from ${data.symbol} to ${data.newSymbol}`;
+      if (data.name !== undefined) message += ` New name: ${data.name}`;
+      if (data.category !== undefined) message += ` New category: ${data.category}`;
+      if (data.location !== undefined) message += ` New location: ${data.location}`;
       if (data.unitPrice !== undefined) message += ` New buy price: $${data.unitPrice}`;
       if (data.currentUnitPrice !== undefined) message += ` New current price: $${data.currentUnitPrice}`;
       if (data.quantity !== undefined) message += ` New quantity: ${data.quantity}`;
+      if (data.manualPricing !== undefined) message += ` Manual pricing: ${data.manualPricing ? 'enabled' : 'disabled'}`;
 
       return { 
         success: true, 
@@ -427,26 +499,44 @@ export class PortfolioAgent {
   }
   
   private static async executeDeleteHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
-    // For now, return a placeholder - we'll need to find the holding ID first
-    return { success: false, message: 'Delete holding not implemented yet' };
+    try {
+      // Get or create user using shared utility
+      const user = await this.getOrCreateDefaultUser();
+
+      // Find the existing holding by exact symbol
+      const holding = await prisma.holdings.findFirst({
+        where: {
+          symbol: data.symbol
+        }
+      });
+
+      if (!holding) {
+        return { 
+          success: false, 
+          message: `No holding found with symbol ${data.symbol}. Please check the symbol and try again.` 
+        };
+      }
+
+      // Delete the holding
+      await prisma.holdings.delete({
+        where: { id: holding.id }
+      });
+
+      return { 
+        success: true, 
+        message: `Successfully deleted ${holding.symbol} (${holding.name}) from your portfolio` 
+      };
+      
+    } catch (error) {
+      console.error('Delete holding error:', error);
+      return { success: false, message: 'Database error while deleting holding' };
+    }
   }
 
   private static async executeReduceHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
     try {
-      // Get or create user (for testing - using default user)
-      let user = await prisma.user.findFirst({
-        where: { id: 'default-user' }
-      });
-      
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            id: 'default-user',
-            email: 'default@example.com',
-            name: 'Default User'
-          }
-        });
-      }
+      // Get or create user using shared utility
+      const user = await this.getOrCreateDefaultUser();
 
       // Find the existing holding by exact symbol (LLM should have already found the correct one)
       const holding = await prisma.holdings.findFirst({
@@ -518,20 +608,8 @@ export class PortfolioAgent {
 
   private static async executeIncreaseHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
     try {
-      // Get or create user (for testing - using default user)
-      let user = await prisma.user.findFirst({
-        where: { id: 'default-user' }
-      });
-      
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            id: 'default-user',
-            email: 'default@example.com',
-            name: 'Default User'
-          }
-        });
-      }
+      // Get or create user using shared utility
+      const user = await this.getOrCreateDefaultUser();
 
       // Find the existing holding by exact symbol (LLM should have already found the correct one)
       const holding = await prisma.holdings.findFirst({
@@ -692,5 +770,46 @@ export class PortfolioAgent {
     };
     
     return companyNames[symbol] || `${symbol} Corporation`;
+  }
+
+  // Shared utility function to get or create default user
+  private static async getOrCreateDefaultUser() {
+    let user = await prisma.user.findFirst({
+      where: { id: 'default-user' }
+    });
+    
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          id: 'default-user',
+          email: 'default@example.com',
+          name: 'Default User'
+        }
+      });
+    }
+    
+    return user;
+  }
+
+  // Shared utility function to get or create category
+  private static async getOrCreateCategory(categoryName: string, userId: string) {
+    let category = await prisma.assetCategory.findFirst({
+      where: { 
+        name: categoryName || 'Growth',
+        userId: userId
+      }
+    });
+    
+    if (!category) {
+      category = await prisma.assetCategory.create({
+        data: {
+          name: categoryName || 'Growth',
+          targetPercentage: 25,
+          userId: userId
+        }
+      });
+    }
+    
+    return category;
   }
 } 

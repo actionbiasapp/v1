@@ -13,7 +13,7 @@ type PriceSource = 'fmp' | 'alpha' | 'coingecko' | 'manual' | 'yesterday';
 class DynamicPriceService {
   detectPriceSource(symbol: string): 'fmp' | 'alpha' | 'coingecko' | 'manual' {
     if (['BTC', 'ETH', 'WBTC', 'USDC'].includes(symbol)) return 'coingecko';
-    if (symbol.includes('CASH') || symbol === 'NIFTY100' || symbol === 'GOLD') return 'manual';
+    if (symbol.includes('CASH') || symbol === 'NIFTY100' || symbol === 'GOLD' || ['DBS', 'IBKR', 'SC'].includes(symbol)) return 'manual';
     if (symbol.endsWith('.L') || symbol.endsWith('.SI')) return 'alpha';
     return 'fmp';
   }
@@ -23,7 +23,9 @@ class DynamicPriceService {
       const response = await fetch(`${FMP_BASE_URL}/quote-short/${symbol}?apikey=${FMP_API_KEY}`);
       if (!response.ok) return null;
       const data = await response.json();
-      return data[0]?.price || null;
+      const price = data[0]?.price || null;
+      // Round to 2 decimal places for consistency
+      return price ? Math.round(price * 100) / 100 : null;
     } catch (error) {
       return null;
     }
@@ -49,7 +51,9 @@ class DynamicPriceService {
     try {
       const response = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
       const data = await response.json();
-      return data[coinId]?.usd || null;
+      const price = data[coinId]?.usd || null;
+      // Round to 2 decimal places for consistency
+      return price ? Math.round(price * 100) / 100 : null;
     } catch (error) {
       return null;
     }
@@ -126,8 +130,8 @@ class DynamicPriceService {
           where: { symbol: { equals: symbol, mode: 'insensitive' } }
         });
         for (const holding of holdingsToUpdate) {
-          // Skip holdings with manual pricing
-          if (holding.priceSource === 'manual') {
+          // Skip holdings with manual pricing or manual asset type
+          if (holding.priceSource === 'manual' || holding.assetType === 'manual') {
             continue;
           }
           let valueSGD = 0;

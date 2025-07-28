@@ -147,3 +147,69 @@ export const TIME_CONSTANTS = {
   SRS_DEADLINE_MONTH: 12,
   SRS_DEADLINE_DAY: 31
 } as const; 
+
+// Cash/Liquidity naming conventions
+export const CASH_NAMING_CONVENTIONS = {
+  // Standard cash naming patterns
+  CASH_PREFIXES: ['CASH', 'CASH_', 'CASH-', 'CASH '],
+  CASH_SUFFIXES: ['_CASH', '-CASH', ' CASH'],
+  
+  // Common cash account types
+  CASH_ACCOUNTS: [
+    'SAVINGS_ACCOUNT',
+    'CHECKING_ACCOUNT', 
+    'CURRENT_ACCOUNT',
+    'MONEY_MARKET',
+    'HIGH_YIELD_SAVINGS',
+    'EMERGENCY_FUND',
+    'CASH_RESERVE',
+    'LIQUID_CASH',
+    'READY_CASH'
+  ],
+  
+  // Currency-specific cash names
+  CURRENCY_CASH: {
+    'SGD': ['SGD_CASH', 'SINGAPORE_DOLLAR', 'SGD_SAVINGS'],
+    'USD': ['USD_CASH', 'US_DOLLAR', 'USD_SAVINGS'],
+    'INR': ['INR_CASH', 'INDIAN_RUPEE', 'INR_SAVINGS']
+  }
+};
+
+// Function to standardize cash naming
+export function standardizeCashName(symbol: string, currency: string = 'SGD'): string {
+  const upperSymbol = symbol.toUpperCase();
+  
+  // If it's already a standard cash name, return as is
+  if (CASH_NAMING_CONVENTIONS.CASH_ACCOUNTS.includes(upperSymbol)) {
+    return upperSymbol;
+  }
+  
+  // Check if it has cash prefixes/suffixes
+  const hasCashPrefix = CASH_NAMING_CONVENTIONS.CASH_PREFIXES.some(prefix => 
+    upperSymbol.startsWith(prefix)
+  );
+  const hasCashSuffix = CASH_NAMING_CONVENTIONS.CASH_SUFFIXES.some(suffix => 
+    upperSymbol.endsWith(suffix)
+  );
+  
+  if (hasCashPrefix || hasCashSuffix) {
+    return upperSymbol;
+  }
+  
+  // For liquidity category, ensure it's clearly marked as cash
+  return `${currency}_CASH`;
+}
+
+// Function to check if a holding is cash/liquidity
+export function isCashHolding(symbol: string, category: string): boolean {
+  if (category.toLowerCase() !== 'liquidity') return false;
+  
+  const upperSymbol = symbol.toUpperCase();
+  
+  return (
+    CASH_NAMING_CONVENTIONS.CASH_ACCOUNTS.includes(upperSymbol) ||
+    CASH_NAMING_CONVENTIONS.CASH_PREFIXES.some(prefix => upperSymbol.startsWith(prefix)) ||
+    CASH_NAMING_CONVENTIONS.CASH_SUFFIXES.some(suffix => upperSymbol.endsWith(suffix)) ||
+    Object.values(CASH_NAMING_CONVENTIONS.CURRENCY_CASH).flat().includes(upperSymbol)
+  );
+} 

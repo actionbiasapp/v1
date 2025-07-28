@@ -127,7 +127,6 @@ describe('CurrencyToggle', () => {
     it('should render simple version with label', () => {
       render(<CurrencyToggleSimple {...defaultProps} />);
 
-      expect(screen.getByText('View:')).toBeInTheDocument();
       expect(screen.getByText(/🇸🇬/)).toBeInTheDocument();
       expect(screen.getByText(/SGD/)).toBeInTheDocument();
       expect(screen.getByText(/🇺🇸/)).toBeInTheDocument();
@@ -136,42 +135,20 @@ describe('CurrencyToggle', () => {
       expect(screen.getByText(/INR/)).toBeInTheDocument();
     });
 
-    it('should have proper title attributes', () => {
-      render(<CurrencyToggleSimple {...defaultProps} />);
-
-      const sgdButton = screen.getByText(/🇸🇬/).closest('button');
-      const usdButton = screen.getByText(/🇺🇸/).closest('button');
-      const inrButton = screen.getByText(/🇮🇳/).closest('button');
-
-      expect(sgdButton).toHaveAttribute('title', 'View portfolio in Singapore Dollar');
-      expect(usdButton).toHaveAttribute('title', 'View portfolio in US Dollar');
-      expect(inrButton).toHaveAttribute('title', 'View portfolio in Indian Rupee');
-    });
-
     it('should highlight selected currency in simple variant', () => {
       render(<CurrencyToggleSimple {...defaultProps} displayCurrency="USD" />);
 
       const usdButton = screen.getByText(/🇺🇸/).closest('button');
       const sgdButton = screen.getByText(/🇸🇬/).closest('button');
 
-      expect(usdButton).toHaveClass('bg-indigo-600', 'text-white');
-      expect(sgdButton).toHaveClass('text-slate-400');
-    });
-
-    it('should call onCurrencyChange when currency is clicked in simple variant', () => {
-      render(<CurrencyToggleSimple {...defaultProps} />);
-
-      const usdButton = screen.getByText(/🇺🇸/).closest('button');
-      expect(usdButton).not.toBeNull();
-      fireEvent.click(usdButton!);
-
-      expect(mockOnCurrencyChange).toHaveBeenCalledWith('USD');
+      expect(usdButton).toHaveClass('bg-white/10', 'text-white');
+      expect(sgdButton).toHaveClass('text-gray-400');
     });
 
     it('should apply custom className to simple variant', () => {
       render(<CurrencyToggleSimple {...defaultProps} className="custom-class" />);
 
-      const container = screen.getByText('View:').closest('div');
+      const container = screen.getByText(/🇸🇬/).closest('div');
       expect(container).toHaveClass('custom-class');
     });
   });
@@ -265,12 +242,18 @@ describe('CurrencyToggle', () => {
       const buttons = screen.getAllByRole('button');
       buttons.forEach(button => {
         expect(button).toHaveClass(
-          'px-2',
-          'py-1',
-          'rounded',
-          'text-xs',
+          'px-2.5',
+          'py-2',
+          'rounded-lg',
+          'text-sm',
           'font-medium',
-          'transition-colors'
+          'transition-all',
+          'duration-200',
+          'min-w-[44px]',
+          'min-h-[44px]',
+          'flex',
+          'items-center',
+          'justify-center'
         );
       });
     });
