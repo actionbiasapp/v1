@@ -42,7 +42,8 @@ export class PortfolioAgent {
           data: quickResult.data,
           message: quickResult.message,
           confidence: 1.0,
-          suggestions: ['Show my portfolio summary', 'What\'s my biggest holding?', 'Show allocation gaps']
+          suggestions: ['Show my portfolio summary', 'What\'s my biggest holding?', 'Show allocation gaps'],
+          requires_confirmation: false
         };
       }
       
