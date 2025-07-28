@@ -17,36 +17,45 @@ export class QuickQueryHandler {
     displayCurrency: CurrencyCode,
     exchangeRates: ExchangeRates | null
   ): Promise<QuickQueryResult> {
-    const lowerQuery = query.toLowerCase();
-    
-    // Portfolio Summary
-    if (lowerQuery.includes('portfolio summary') || lowerQuery.includes('summary')) {
-      return this.getPortfolioSummary(holdings, displayCurrency, exchangeRates);
+    try {
+      const lowerQuery = query.toLowerCase();
+      console.log('🔍 Quick query check:', lowerQuery);
+      
+      // Portfolio Summary
+      if (lowerQuery.includes('portfolio summary') || lowerQuery.includes('summary')) {
+        return this.getPortfolioSummary(holdings, displayCurrency, exchangeRates);
+      }
+      
+      // Biggest Holding
+      if (lowerQuery.includes('biggest holding') || lowerQuery.includes('largest')) {
+        return this.getBiggestHolding(holdings, displayCurrency, exchangeRates);
+      }
+      
+      // Allocation Gaps
+      if (lowerQuery.includes('allocation gap') || lowerQuery.includes('gap')) {
+        return this.getAllocationGaps(holdings, displayCurrency, exchangeRates);
+      }
+      
+      // Total Value
+      if (lowerQuery.includes('total value') || lowerQuery.includes('total') || 
+          lowerQuery.includes('value of') || lowerQuery.includes('portfolio value') ||
+          lowerQuery.includes('worth') || lowerQuery.includes('how much')) {
+        return this.getTotalValue(holdings, displayCurrency, exchangeRates);
+      }
+      
+      // Category Filter
+      if (lowerQuery.includes('core') || lowerQuery.includes('growth') || 
+          lowerQuery.includes('hedge') || lowerQuery.includes('liquidity')) {
+        return this.getCategoryHoldings(query, holdings, displayCurrency, exchangeRates);
+      }
+      
+      console.log('🔍 No quick query match found');
+      // Not a quick query - needs OpenAI
+      return { success: false, message: 'This requires AI analysis' };
+    } catch (error) {
+      console.error('❌ Quick query error:', error);
+      return { success: false, message: 'Error processing quick query' };
     }
-    
-    // Biggest Holding
-    if (lowerQuery.includes('biggest holding') || lowerQuery.includes('largest')) {
-      return this.getBiggestHolding(holdings, displayCurrency, exchangeRates);
-    }
-    
-    // Allocation Gaps
-    if (lowerQuery.includes('allocation gap') || lowerQuery.includes('gap')) {
-      return this.getAllocationGaps(holdings, displayCurrency, exchangeRates);
-    }
-    
-    // Total Value
-    if (lowerQuery.includes('total value') || lowerQuery.includes('total')) {
-      return this.getTotalValue(holdings, displayCurrency, exchangeRates);
-    }
-    
-    // Category Filter
-    if (lowerQuery.includes('core') || lowerQuery.includes('growth') || 
-        lowerQuery.includes('hedge') || lowerQuery.includes('liquidity')) {
-      return this.getCategoryHoldings(query, holdings, displayCurrency, exchangeRates);
-    }
-    
-    // Not a quick query - needs OpenAI
-    return { success: false, message: 'This requires AI analysis' };
   }
   
   private static getPortfolioSummary(

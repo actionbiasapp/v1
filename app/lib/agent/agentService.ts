@@ -24,6 +24,8 @@ export class PortfolioAgent {
     try {
       const { message, context } = request;
       
+      console.log('🔍 Processing message:', message);
+      
       // First, try quick queries (no OpenAI cost)
       const quickResult = await QuickQueryHandler.handleQuery(
         message,
@@ -31,6 +33,8 @@ export class PortfolioAgent {
         (context.displayCurrency as CurrencyCode) || 'SGD',
         null // exchangeRates can be added later
       );
+      
+      console.log('🔍 Quick query result:', quickResult);
       
       if (quickResult.success) {
         return {
