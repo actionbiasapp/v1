@@ -41,22 +41,42 @@ export async function POST(request: NextRequest) {
       orderBy: { year: 'desc' }
     });
 
-    // Get financial profile (mock for now)
-    const financialProfile = {
-      incomeCurrency: 'SGD' as const,
-      taxStatus: 'Employment Pass' as const,
-      currentSRSContributions: 0,
-      srsAutoOptimize: false,
+    // Get financial profile from database (stored in User model)
+    const user = await prisma.user.findFirst({
+      where: { id: 'default' } // Assuming single user for now
+    }) || {
+      id: 'default',
+      email: 'default@example.com',
+      name: 'Default User',
+      country: 'Singapore',
+      taxStatus: 'Employment Pass',
+      primaryCurrency: 'SGD',
+      birthYear: null,
+      srsLimit: 35700,
       fiGoal: 2500000,
       fiTargetYear: 2032,
-      firstMillionTarget: false,
+      profileCompleteness: 0,
+      dataQuality: 0,
+      yearsOfData: 0,
+      lastProfileUpdate: new Date(),
+      autoUpdatePortfolio: true,
+      shareAnonymizedData: false,
+      shareWithAdvisor: false,
+      exportDataAllowed: true,
+      srsDeadlineReminder: true,
+      rebalanceReminder: true,
+      fiProgressReminder: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
       coreTarget: 25,
       growthTarget: 55,
       hedgeTarget: 10,
       liquidityTarget: 10,
-      rebalanceThreshold: 5,
-      profileCompleteness: 0
+      rebalanceThreshold: 5
     };
+
+    // Get display currency from request or use user's primary currency
+    const displayCurrency = body.displayCurrency || user.primaryCurrency || 'SGD';
 
     // Build agent request
     const agentRequest: AgentRequest = {
@@ -87,8 +107,22 @@ export async function POST(request: NextRequest) {
           marketGains: Number(yd.marketGains),
           returnPercent: Number(yd.returnPercent)
         })),
-        financialProfile,
-        displayCurrency: 'SGD' as const
+        financialProfile: {
+          incomeCurrency: user.primaryCurrency,
+          taxStatus: user.taxStatus,
+          currentSRSContributions: 0,
+          srsAutoOptimize: false,
+          fiGoal: Number(user.fiGoal),
+          fiTargetYear: user.fiTargetYear,
+          firstMillionTarget: false,
+          coreTarget: user.coreTarget,
+          growthTarget: user.growthTarget,
+          hedgeTarget: user.hedgeTarget,
+          liquidityTarget: user.liquidityTarget,
+          rebalanceThreshold: user.rebalanceThreshold,
+          profileCompleteness: user.profileCompleteness
+        },
+        displayCurrency: displayCurrency as any
       }
     };
 

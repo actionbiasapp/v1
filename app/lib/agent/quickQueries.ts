@@ -15,7 +15,8 @@ export class QuickQueryHandler {
     query: string, 
     holdings: Holding[], 
     displayCurrency: CurrencyCode,
-    exchangeRates: ExchangeRates | null
+    exchangeRates: ExchangeRates | null,
+    financialProfile?: any
   ): Promise<QuickQueryResult> {
     try {
       const lowerQuery = query.toLowerCase();
@@ -33,7 +34,7 @@ export class QuickQueryHandler {
       
       // Allocation Gaps
       if (lowerQuery.includes('allocation gap') || lowerQuery.includes('gap')) {
-        return this.getAllocationGaps(holdings, displayCurrency, exchangeRates);
+        return this.getAllocationGaps(holdings, displayCurrency, exchangeRates, financialProfile);
       }
       
       // Total Value
@@ -71,13 +72,14 @@ export class QuickQueryHandler {
       const categoryResult = calculatePortfolioValue(categoryHoldings, displayCurrency, exchangeRates);
       const categoryValue = categoryResult.totalValue;
       const percentage = totalValue > 0 ? (categoryValue / totalValue) * 100 : 0;
-      return `${category}: ${categoryValue.toLocaleString()} (${percentage.toFixed(1)}%)`;
+      return `${category}: ${Math.round(categoryValue).toLocaleString()} (${percentage.toFixed(1)}%)`;
     }).join('\n');
     
     return {
       success: true,
-      message: `📊 **Portfolio Summary**\n\nTotal Value: ${totalValue.toLocaleString()} ${displayCurrency}\n\n${summary}`,
-      action: 'display'
+      message: `📊 **Portfolio Summary**\n\nTotal Value: ${Math.round(totalValue).toLocaleString()} ${displayCurrency}\n\n${summary}`,
+      action: 'display',
+      data: { type: 'portfolio_summary' }
     };
   }
   
@@ -104,23 +106,29 @@ export class QuickQueryHandler {
     
     return {
       success: true,
-      message: `🏆 **Biggest Holding**\n\n${biggest.symbol} (${biggest.name})\nValue: ${biggest.value.toLocaleString()} ${displayCurrency}\nPercentage: ${percentage.toFixed(1)}%`,
+      message: `🏆 **Biggest Holding**\n\n${biggest.symbol} (${biggest.name})\nValue: ${Math.round(biggest.value).toLocaleString()} ${displayCurrency}\nPercentage: ${percentage.toFixed(1)}%`,
       action: 'highlight',
-      data: { symbol: biggest.symbol }
+      data: { symbol: biggest.symbol, type: 'biggest_holding' }
     };
   }
   
   private static getAllocationGaps(
     holdings: Holding[], 
     displayCurrency: CurrencyCode,
-    exchangeRates: ExchangeRates | null
+    exchangeRates: ExchangeRates | null,
+    financialProfile?: any
   ): QuickQueryResult {
     const portfolioResult = calculatePortfolioValue(holdings, displayCurrency, exchangeRates);
     const totalValue = portfolioResult.totalValue;
     const categories = this.groupByCategory(holdings);
     
-    // Default targets (can be made configurable)
-    const targets = { Core: 25, Growth: 55, Hedge: 10, Liquidity: 10 };
+    // Get targets from financial profile or use defaults
+    const targets = {
+      Core: financialProfile?.coreTarget || 25,
+      Growth: financialProfile?.growthTarget || 55,
+      Hedge: financialProfile?.hedgeTarget || 10,
+      Liquidity: financialProfile?.liquidityTarget || 10
+    };
     
     const gaps = Object.entries(categories).map(([category, categoryHoldings]) => {
       const categoryResult = calculatePortfolioValue(categoryHoldings, displayCurrency, exchangeRates);
@@ -139,19 +147,24 @@ export class QuickQueryHandler {
     }).filter(gap => Math.abs(gap.gap) > 2); // Only show gaps > 2%
     
     if (gaps.length === 0) {
-      return { success: true, message: '✅ All allocations are within target ranges!' };
+      return { 
+        success: true, 
+        message: '✅ All allocations are within target ranges!',
+        data: { type: 'allocation_gaps' }
+      };
     }
     
     const gapText = gaps.map(gap => {
       const direction = gap.gap > 0 ? 'over' : 'under';
       const action = gap.gap > 0 ? 'Consider reducing' : 'Consider adding';
-      return `${gap.category}: ${gap.current.toFixed(1)}% (${direction} by ${Math.abs(gap.gap).toFixed(1)}%)\n   ${action} ${Math.abs(gap.gapAmount).toLocaleString()} ${displayCurrency}`;
+      return `${gap.category}: ${gap.current.toFixed(1)}% (${direction} by ${Math.abs(gap.gap).toFixed(1)}%)\n   ${action} ${Math.round(Math.abs(gap.gapAmount)).toLocaleString()} ${displayCurrency}`;
     }).join('\n\n');
     
     return {
       success: true,
       message: `🎯 **Allocation Gaps**\n\n${gapText}`,
-      action: 'display'
+      action: 'display',
+      data: { type: 'allocation_gaps' }
     };
   }
   
@@ -165,8 +178,9 @@ export class QuickQueryHandler {
     
     return {
       success: true,
-      message: `💰 **Total Portfolio Value**\n\n${totalValue.toLocaleString()} ${displayCurrency}`,
-      action: 'display'
+      message: `💰 **Total Portfolio Value**\n\n${Math.round(totalValue).toLocaleString()} ${displayCurrency}`,
+      action: 'display',
+      data: { type: 'total_value' }
     };
   }
   

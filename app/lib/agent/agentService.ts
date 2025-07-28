@@ -31,18 +31,22 @@ export class PortfolioAgent {
         message,
         context.currentHoldings || [],
         (context.displayCurrency as CurrencyCode) || 'SGD',
-        null // exchangeRates can be added later
+        null, // exchangeRates can be added later
+        context.financialProfile
       );
       
       console.log('🔍 Quick query result:', quickResult);
       
       if (quickResult.success) {
+        // Provide context-aware suggestions based on what was just shown
+        const suggestions = this.getContextAwareSuggestions(quickResult.data?.type);
+        
         return {
           action: 'confirm',
           data: quickResult.data,
           message: quickResult.message,
           confidence: 1.0,
-          suggestions: ['Show my portfolio summary', 'What\'s my biggest holding?', 'Show allocation gaps'],
+          suggestions,
           requires_confirmation: false
         };
       }
@@ -790,6 +794,28 @@ export class PortfolioAgent {
     };
     
     return companyNames[symbol] || `${symbol} Corporation`;
+  }
+
+  private static getContextAwareSuggestions(quickQueryType: string | undefined): string[] {
+    const allSuggestions = [
+      'Show my portfolio summary',
+      'What\'s my biggest holding?',
+      'Show allocation gaps'
+    ];
+
+    // If we just showed a specific type, don't suggest it again
+    if (quickQueryType === 'portfolio_summary') {
+      return allSuggestions.filter(s => !s.includes('portfolio summary'));
+    } else if (quickQueryType === 'biggest_holding') {
+      return allSuggestions.filter(s => !s.includes('biggest holding'));
+    } else if (quickQueryType === 'allocation_gaps') {
+      return allSuggestions.filter(s => !s.includes('allocation gaps'));
+    } else if (quickQueryType === 'total_value') {
+      return allSuggestions.filter(s => !s.includes('portfolio summary'));
+    }
+
+    // Default: show all suggestions
+    return allSuggestions;
   }
 
   // Shared utility function to get or create default user

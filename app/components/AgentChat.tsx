@@ -74,7 +74,11 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
       const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, context })
+        body: JSON.stringify({ 
+          message, 
+          context,
+          displayCurrency: context.displayCurrency 
+        })
       });
 
       const result = await response.json();
