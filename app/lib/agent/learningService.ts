@@ -16,7 +16,7 @@ export interface ActionHistory {
   userInput: string;
   actionTaken: string;
   success: boolean;
-  patternUsed?: string;
+  patternUsed: string | null;
   timestamp: Date;
   metadata?: any;
 }
@@ -88,7 +88,7 @@ export class LearningService {
     userInput: string, 
     actionTaken: string, 
     success: boolean, 
-    patternUsed?: string,
+    patternUsed: string | null = null,
     metadata?: any
   ): Promise<void> {
     await prisma.actionHistory.create({
