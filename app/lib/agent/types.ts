@@ -4,6 +4,7 @@ export interface AgentContext {
   yearlyData: any[];
   financialProfile: any;
   displayCurrency: string;
+  exchangeRates?: any;
 }
 
 export interface AgentRequest {
@@ -62,7 +63,9 @@ export type ActionType =
   | 'delete_holding'
   | 'add_yearly_data'
   | 'update_profile'
-  | 'portfolio_analysis';
+  | 'portfolio_analysis'
+  | 'undo_action'
+  | 'confirm_action';
 
 export interface ExtractedHoldingData {
   symbol?: string;

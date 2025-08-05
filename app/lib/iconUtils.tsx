@@ -1,83 +1,171 @@
-// app/lib/iconUtils.ts - Icon utilities with fallback support
+// app/lib/iconUtils.tsx - Lean, polished MVP icon system
 import React from 'react';
 
-// SVG icon components for better cross-platform compatibility
+// Simple, intuitive category icons following 80-20 principle
 export const CategoryIcons = {
   Core: {
     emoji: '🛡️',
-    svg: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 2.18l6 2.67v4.15c0 4.52-3.03 8.69-6 9.82-2.97-1.13-6-5.3-6-9.82V5.85l6-2.67z"/>
-      </svg>
-    )
+    name: 'Core Holdings',
+    description: 'Foundation investments'
   },
   Growth: {
     emoji: '📈',
-    svg: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/>
-      </svg>
-    )
+    name: 'Growth',
+    description: 'High-growth potential'
   },
   Hedge: {
     emoji: '⚖️',
-    svg: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-      </svg>
-    )
+    name: 'Hedge',
+    description: 'Risk management'
   },
   Liquidity: {
     emoji: '💰',
-    svg: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/>
-      </svg>
-    )
+    name: 'Liquidity',
+    description: 'Cash and equivalents'
   }
 };
 
+// Asset type mapping for intuitive icons
+const getAssetTypeIcon = (symbol: string, name?: string): string => {
+  const symbolUpper = symbol.toUpperCase();
+  const nameUpper = name?.toUpperCase() || '';
+  
+  // Crypto assets
+  if (['BTC', 'WBTC', 'ETH', 'USDC', 'USDT'].includes(symbolUpper)) {
+    return '₿';
+  }
+  
+  // Gold/Commodities
+  if (['GOLD', 'GLD', 'SLV', 'XAU'].includes(symbolUpper) || 
+      nameUpper.includes('GOLD') || nameUpper.includes('SILVER')) {
+    return '🥇';
+  }
+  
+  // ETFs (common patterns)
+  if (['VUAA', 'VOO', 'SPY', 'QQQ', 'IWM'].includes(symbolUpper) || 
+      symbolUpper.includes('ETF') || nameUpper.includes('ETF')) {
+    return '📊';
+  }
+  
+  // Tech companies (major ones)
+  if (['AAPL', 'GOOG', 'MSFT', 'NVDA', 'TSLA', 'META', 'AMZN', 'CRM'].includes(symbolUpper)) {
+    return '💻';
+  }
+  
+  // Financial/Insurance
+  if (['UNH', 'JPM', 'BAC', 'WFC', 'GS'].includes(symbolUpper) || 
+      nameUpper.includes('BANK') || nameUpper.includes('INSURANCE')) {
+    return '🏦';
+  }
+  
+  // Healthcare/Biotech
+  if (['HIMS', 'AMGN', 'JNJ', 'PFE', 'MRNA'].includes(symbolUpper) || 
+      nameUpper.includes('HEALTH') || nameUpper.includes('MEDICAL')) {
+    return '🏥';
+  }
+  
+  // Energy/Utilities
+  if (['XOM', 'CVX', 'COP', 'EOG'].includes(symbolUpper) || 
+      nameUpper.includes('ENERGY') || nameUpper.includes('OIL')) {
+    return '⚡';
+  }
+  
+  // Real Estate
+  if (['VNQ', 'IYR', 'SCHH'].includes(symbolUpper) || 
+      nameUpper.includes('REIT') || nameUpper.includes('REAL ESTATE')) {
+    return '🏢';
+  }
+  
+  // Cash/Money Market
+  if (['CASH', 'MONEY', 'USD', 'SGD'].includes(symbolUpper)) {
+    return '💵';
+  }
+  
+  // Default for stocks
+  return '📈';
+};
+
+// Asset icons with intelligent fallback
 export const AssetIcons = {
-  NVDA: { emoji: '🇺🇸', svg: <span>🇺🇸</span> },
-  GOOG: { emoji: '🇺🇸', svg: <span>🇺🇸</span> },
-  TSLA: { emoji: '🇺🇸', svg: <span>🇺🇸</span> },
-  VUAA: { emoji: '🇺🇸', svg: <span>🇺🇸</span> },
-  INDIA: { emoji: '🇮🇳', svg: <span>🇮🇳</span> },
-  SGD: { emoji: '🇸🇬', svg: <span>🇸🇬</span> },
-  USDC: { emoji: '💵', svg: <span>💵</span> },
-  BTC: { emoji: '₿', svg: <span>₿</span> },
-  WBTC: { emoji: '₿', svg: <span>₿</span> },
-  GOLD: { emoji: '🥇', svg: <span>🥇</span> },
-  ETH: { emoji: '⟠', svg: <span>⟠</span> },
-  DEFAULT: { emoji: '📊', svg: <span>📊</span> }
+  // Crypto
+  BTC: { emoji: '₿', name: 'Bitcoin' },
+  WBTC: { emoji: '₿', name: 'Wrapped Bitcoin' },
+  ETH: { emoji: '⟠', name: 'Ethereum' },
+  USDC: { emoji: '💵', name: 'USD Coin' },
+  
+  // Commodities
+  GOLD: { emoji: '🥇', name: 'Gold' },
+  GLD: { emoji: '🥇', name: 'Gold ETF' },
+  
+  // Major Tech
+  AAPL: { emoji: '💻', name: 'Apple' },
+  GOOG: { emoji: '💻', name: 'Alphabet' },
+  NVDA: { emoji: '💻', name: 'NVIDIA' },
+  TSLA: { emoji: '🚗', name: 'Tesla' },
+  META: { emoji: '💻', name: 'Meta' },
+  AMZN: { emoji: '📦', name: 'Amazon' },
+  CRM: { emoji: '💻', name: 'Salesforce' },
+  
+  // Financial
+  UNH: { emoji: '🏦', name: 'UnitedHealth' },
+  JPM: { emoji: '🏦', name: 'JPMorgan' },
+  
+  // Healthcare
+  HIMS: { emoji: '🏥', name: 'Hims & Hers' },
+  AMGN: { emoji: '🏥', name: 'Amgen' },
+  
+  // ETFs
+  VUAA: { emoji: '📊', name: 'Vanguard S&P 500' },
+  VOO: { emoji: '📊', name: 'Vanguard S&P 500' },
+  SPY: { emoji: '📊', name: 'SPDR S&P 500' },
+  
+  // Energy
+  IREN: { emoji: '⚡', name: 'Iris Energy' },
+  
+  // Cash
+  CASH: { emoji: '💵', name: 'Cash' },
+  SGD: { emoji: '💵', name: 'Singapore Dollar' },
+  USD: { emoji: '💵', name: 'US Dollar' },
+  
+  // Default
+  DEFAULT: { emoji: '📈', name: 'Stock' }
 };
 
-// Utility function to get icon with fallback
-export function getIconWithFallback(
-  type: 'category' | 'asset',
-  name: string,
-  useSvg: boolean = false
-): { emoji: string; svg: React.ReactNode } {
-  if (type === 'category') {
-    return CategoryIcons[name as keyof typeof CategoryIcons] || CategoryIcons.Core;
-  } else {
-    return AssetIcons[name as keyof typeof AssetIcons] || AssetIcons.DEFAULT;
+// Smart icon getter with intelligent categorization
+export function getAssetIcon(symbol: string, name?: string): string {
+  const symbolUpper = symbol.toUpperCase();
+  
+  // Check if we have a specific icon defined
+  if (AssetIcons[symbolUpper as keyof typeof AssetIcons]) {
+    return AssetIcons[symbolUpper as keyof typeof AssetIcons].emoji;
   }
+  
+  // Use intelligent categorization
+  return getAssetTypeIcon(symbol, name);
 }
 
-// Hook to detect emoji support
+// Get category icon
+export function getCategoryIcon(category: string): string {
+  const categoryUpper = category.toUpperCase();
+  return CategoryIcons[categoryUpper as keyof typeof CategoryIcons]?.emoji || CategoryIcons.Core.emoji;
+}
+
+// Get category info
+export function getCategoryInfo(category: string) {
+  const categoryUpper = category.toUpperCase();
+  return CategoryIcons[categoryUpper as keyof typeof CategoryIcons] || CategoryIcons.Core;
+}
+
+// Simple emoji support detection (80-20 approach)
 export function useEmojiSupport(): boolean {
   if (typeof window === 'undefined') return true;
   
-  // Simple emoji support detection
+  // Simple test - if we can render a basic emoji, we're good
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) return false;
   
   ctx.font = '16px Arial';
-  const text = '🛡️';
-  const metrics = ctx.measureText(text);
-  
-  // If the width is very small, emoji might not be supported
+  const metrics = ctx.measureText('📈');
   return metrics.width > 10;
 } 

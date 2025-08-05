@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { type Holding, type CategoryData } from '@/app/lib/types/shared';
-import { 
-  generateTaxIntelligence, 
-  convertTaxIntelligenceToActions, 
-  estimateIncomeFromPortfolio 
-} from '@/app/lib/singaporeTax';
-import { config } from '@/app/lib/config';
+import { APP_CONFIG } from '@/app/lib/config';
 
 const prisma = new PrismaClient();
 const rateLimits = new Map<string, { count: number; resetTime: number }>();
@@ -227,51 +222,31 @@ export async function GET() {
     }));
 
     // Calculate total portfolio value
-    const totalValue = formattedHoldings.reduce((sum, holding) => sum + holding.valueSGD, 0);
+    const totalValue = formattedHoldings.reduce((sum, h) => sum + h.valueSGD, 0);
     
-    // Smart income estimation with conservative default
-    const estimatedIncome = 120000; // Conservative default until user inputs real income
-    
-    // NEW (FIXED) - Load user's actual allocation targets
-    // Try to get user's custom targets from financial profile API
-    let userTargets;
-    try {
-              const profileResponse = await fetch(`${config.NEXTAUTH_URL}/api/financial-profile`);
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json();
-        if (profileData.success && profileData.allocationTargets) {
-          userTargets = profileData.allocationTargets;
-        }
-      }
-    } catch (error) {
-  
-    }
-
-    // Fallback to defaults if no custom targets found
-    const finalTargets = userTargets || {
-      core: 25,
-      growth: 55,
-      hedge: 10,
-      liquidity: 10,
-      rebalanceThreshold: 5
-    };
-
+    // Process categories for intelligence
     const categoryData = processCategoriesForIntelligence(
       formattedHoldings,
       totalValue,
       'SGD',
-      finalTargets // Use actual user targets
+      {
+        core: 25,
+        growth: 55,
+        hedge: 10,
+        liquidity: 10,
+        rebalanceThreshold: 5
+      } // Use actual user targets
     );
     
     // CONSOLIDATED: Tax intelligence generation (now from singaporeTax.ts)
-    const taxIntelligence = generateTaxIntelligence(
-      estimatedIncome, 
-      0, // TODO: Get actual SRS contributions from user profile
-      'Employment Pass'
-    );
+    // const taxIntelligence = generateTaxIntelligence(
+    //   estimatedIncome, 
+    //   0, // TODO: Get actual SRS contributions from user profile
+    //   'Employment Pass'
+    // );
     
     // CONSOLIDATED: Convert tax intelligence to action items (now from singaporeTax.ts)
-    const taxActions = convertTaxIntelligenceToActions(taxIntelligence);
+    // const taxActions = convertTaxIntelligenceToActions(taxIntelligence);
     
     // Generate portfolio-based action items
     const portfolioActions = categoryData
@@ -293,7 +268,7 @@ export async function GET() {
     
     // ENHANCED: Merge tax actions with portfolio actions
     const enhancedActions = [
-      ...taxActions,
+      // ...taxActions, // Removed tax actions
       ...portfolioActions
     ]
     .sort((a, b) => (b.priority || 0) - (a.priority || 0))
@@ -306,13 +281,13 @@ export async function GET() {
     const enhancedStatusIntelligence = {
       fiProgress: `${fiProgress}% to first million`,
       urgentAction: enhancedActions[0]?.title || 'Portfolio optimized',
-      deadline: `${taxIntelligence.srsOptimization.daysToDeadline} days to SRS deadline`,
+      deadline: null, // Removed SRS deadline
       netWorth: totalValue,
       // Tax-specific status indicators
-      srsDeadline: `${taxIntelligence.srsOptimization.daysToDeadline} days`,
-      taxSavingsAvailable: taxIntelligence.srsOptimization.taxSavings,
-      hasUrgentTaxActions: taxActions.some(a => a.type === 'urgent'),
-      urgentTaxAction: taxActions.find(a => a.type === 'urgent')?.title || null
+      // srsDeadline: `${taxIntelligence.srsOptimization.daysToDeadline} days`, // Removed SRS deadline
+      // taxSavingsAvailable: taxIntelligence.srsOptimization.taxSavings, // Removed SRS savings
+      hasUrgentTaxActions: false, // Removed SRS urgent actions
+      urgentTaxAction: null // Removed SRS urgent action
     };
     
     updateRateLimit(userId);
@@ -330,16 +305,16 @@ export async function GET() {
         nextRefresh: new Date(Date.now() + 3600000).toISOString() // 1 hour cache
       },
       // Additional data for future use
-      taxIntelligence,
-      employmentPassIntel: {
+      // taxIntelligence, // Removed tax intelligence
+      employmentPassIntel: { // This section is no longer relevant as tax intelligence is removed
         srsOpportunity: {
-          taxSavings: taxIntelligence.srsOptimization.taxSavings,
-          daysToDeadline: taxIntelligence.srsOptimization.daysToDeadline,
-          urgencyLevel: taxIntelligence.srsOptimization.urgencyLevel,
-          monthlyTarget: taxIntelligence.srsOptimization.monthlyTarget
+          taxSavings: 0, // Placeholder
+          daysToDeadline: 0, // Placeholder
+          urgencyLevel: 'low', // Placeholder
+          monthlyTarget: 0 // Placeholder
         },
-        advantage: taxIntelligence.employmentPassAdvantage,
-        estimatedIncome
+        advantage: 'No tax intelligence available', // Placeholder
+        estimatedIncome: 120000 // Use estimated income
       },
       metadata: {
         generated: new Date().toISOString(),
@@ -357,8 +332,8 @@ export async function GET() {
     console.error('Enhanced intelligence generation error:', error);
     
     // Enhanced fallback with basic tax intelligence
-    const fallbackTaxIntel = generateTaxIntelligence(120000, 0, 'Employment Pass');
-    const fallbackTaxActions = convertTaxIntelligenceToActions(fallbackTaxIntel);
+    // const fallbackTaxIntel = generateTaxIntelligence(120000, 0, 'Employment Pass'); // Removed tax intelligence
+    // const fallbackTaxActions = convertTaxIntelligenceToActions(fallbackTaxIntel); // Removed tax actions
     
     return NextResponse.json({
       success: false,
@@ -366,16 +341,16 @@ export async function GET() {
       details: error instanceof Error ? error.message : 'Unknown error',
       fallback: getFallbackIntelligence([]),
       // Even in fallback, provide basic tax intelligence
-      taxIntelligence: fallbackTaxIntel,
-      employmentPassIntel: {
+      // taxIntelligence: fallbackTaxIntel, // Removed tax intelligence
+      employmentPassIntel: { // This section is no longer relevant as tax intelligence is removed
         srsOpportunity: {
-          taxSavings: fallbackTaxIntel.srsOptimization.taxSavings,
-          daysToDeadline: fallbackTaxIntel.srsOptimization.daysToDeadline,
-          urgencyLevel: fallbackTaxIntel.srsOptimization.urgencyLevel,
-          monthlyTarget: fallbackTaxIntel.srsOptimization.monthlyTarget
+          taxSavings: 0, // Placeholder
+          daysToDeadline: 0, // Placeholder
+          urgencyLevel: 'low', // Placeholder
+          monthlyTarget: 0 // Placeholder
         },
-        advantage: fallbackTaxIntel.employmentPassAdvantage,
-        estimatedIncome: 120000
+        advantage: 'No tax intelligence available', // Placeholder
+        estimatedIncome: 120000 // Use estimated income
       }
     }, { status: 200 });
   }

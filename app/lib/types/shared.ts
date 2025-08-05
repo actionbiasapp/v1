@@ -85,16 +85,34 @@ export interface Intelligence {
 
 // 3. NetWorth Tracker Types - Added for component extraction
 export interface YearlyData {
+  id: string;
   year: number;
   netWorth: number;
-  annualInvestment?: number;
-  savings: number;
   income: number;
   expenses: number;
-  srsContributions: number;
-  marketGains?: number; // calculated field
-  returnPercent?: number; // calculated field
-  savingsRate?: number;
+  savings: number;
+  srs: number;
+  marketGains: number;
+  returnPercent: number;
+  savingsRate: number;
+  notes?: string;
+  isEstimated: boolean;
+  confidence: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface MonthlySnapshot {
+  id: string;
+  year: number;
+  month: number;
+  income: number;
+  expenses: number;
+  portfolioValue: number;
+  netWorth: number;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface EditFormData {

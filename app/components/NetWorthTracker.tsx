@@ -1,7 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { YearlyData } from '@/app/lib/types/shared';
+import { YearlyData, MonthlySnapshot } from '@/app/lib/types/shared';
+import { formatNumberWithVisibility } from '@/app/lib/numberVisibility';
+import { useNumberVisibility } from '@/app/lib/context/NumberVisibilityContext';
+import { type CurrencyCode, type ExchangeRates, CURRENCY_INFO, convertCurrency } from '@/app/lib/currency';
+import { ChartLoader } from '@/app/components/ui/Loader';
+import { mergeMonthlyAndYearlyData } from '@/app/lib/monthlyToYearlyAggregation';
 import { 
   ResponsiveContainer,
   AreaChart,
@@ -14,44 +19,80 @@ import {
 import { calculateFinancialMetrics } from '@/app/lib/financialUtils';
 
 // Custom Tooltip for the Chart
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label, displayCurrency = 'SGD' }: any) => {
+  const { numbersVisible } = useNumberVisibility();
+  const currencySymbol = CURRENCY_INFO[displayCurrency as CurrencyCode]?.symbol || '$';
+  
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 text-sm">
         <p className="font-bold text-white mb-2">{label}</p>
-        <p className="text-blue-400">Net Worth: ${data.netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-        <p className="text-emerald-400">Market Gains: ${data.marketGains.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-        <p className="text-indigo-400">Savings: ${data.savings.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+        <p className="text-blue-400">Net Worth: {currencySymbol}{formatNumberWithVisibility(data.netWorth, numbersVisible)}</p>
+        <p className="text-emerald-400">Market Gains: {currencySymbol}{formatNumberWithVisibility(data.marketGains, numbersVisible)}</p>
+        <p className="text-indigo-400">Savings: {currencySymbol}{formatNumberWithVisibility(data.savings, numbersVisible)}</p>
       </div>
     );
   }
   return null;
 };
 
-export default function NetWorthTracker({ yearlyData, portfolioTotal }: { yearlyData: YearlyData[], portfolioTotal?: number }) {
-  const [loading, setLoading] = useState(false);
+export default function NetWorthTracker({ 
+  yearlyData, 
+  monthlySnapshots = [],
+  portfolioTotal,
+  displayCurrency = 'SGD',
+  exchangeRates = null,
+  loading = false
+}: { 
+  yearlyData: YearlyData[], 
+  monthlySnapshots?: MonthlySnapshot[],
+  portfolioTotal?: number,
+  displayCurrency?: CurrencyCode,
+  exchangeRates?: ExchangeRates | null,
+  loading?: boolean
+}) {
   const [error, setError] = useState<string | null>(null);
+
+  // Merge monthly and yearly data, with monthly data taking precedence
+  const mergedData = mergeMonthlyAndYearlyData(monthlySnapshots, yearlyData);
+
+  // Convert historical data to display currency if needed
+  const convertedData = mergedData.map((data) => {
+    if (displayCurrency === 'SGD' || !exchangeRates) {
+      return data;
+    }
+    
+    return {
+      ...data,
+      income: convertCurrency(data.income, 'SGD', displayCurrency, exchangeRates),
+      expenses: convertCurrency(data.expenses, 'SGD', displayCurrency, exchangeRates),
+      savings: convertCurrency(data.savings, 'SGD', displayCurrency, exchangeRates),
+      netWorth: convertCurrency(data.netWorth, 'SGD', displayCurrency, exchangeRates),
+      marketGains: convertCurrency(data.marketGains, 'SGD', displayCurrency, exchangeRates),
+      srs: convertCurrency(data.srs, 'SGD', displayCurrency, exchangeRates)
+    };
+  });
 
   // Always use live portfolio value for current year's net worth
   const currentYear = new Date().getFullYear();
-  const updatedYearlyData = yearlyData.map((y) =>
+  const updatedData = convertedData.map((y) =>
     y.year === currentYear && portfolioTotal
       ? { ...y, netWorth: portfolioTotal }
       : y
   );
 
-  const processedData = calculateFinancialMetrics(updatedYearlyData);
+  const processedData = calculateFinancialMetrics(updatedData);
 
   if (loading) {
-    return <div className="text-center text-slate-400 py-8">Loading yearly data...</div>;
-    }
+    return <ChartLoader className="mb-6" />;
+  }
   if (error) {
     return <div className="text-center text-red-400 py-8">{error}</div>;
   }
   
-  const chartData = updatedYearlyData.map((data, index) => {
-    const previousNetWorth = index > 0 ? updatedYearlyData[index - 1].netWorth : 0;
+  const chartData = updatedData.map((data, index) => {
+    const previousNetWorth = index > 0 ? updatedData[index - 1].netWorth : 0;
     return {
       ...data,
       previousNetWorth: previousNetWorth,
@@ -91,8 +132,21 @@ export default function NetWorthTracker({ yearlyData, portfolioTotal }: { yearly
           </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
             <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} />
-            <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(value) => `$${(value / 1000)}k`} />
-            <Tooltip content={<CustomTooltip />} />
+            <YAxis 
+              stroke="#94a3b8" 
+              fontSize={12} 
+              tickFormatter={(value) => {
+                const currencySymbol = CURRENCY_INFO[displayCurrency]?.symbol || '$';
+                if (value >= 1000000) {
+                  return `${currencySymbol}${(value / 1000000).toFixed(1)}M`;
+                } else if (value >= 1000) {
+                  return `${currencySymbol}${(value / 1000).toFixed(0)}k`;
+                } else {
+                  return `${currencySymbol}${value.toFixed(0)}`;
+                }
+              }} 
+            />
+            <Tooltip content={<CustomTooltip displayCurrency={displayCurrency} />} />
             <Area type="monotone" dataKey="netWorth" stroke="#06b6d4" fill="url(#colorNetWorth)" />
             <Area type="monotone" dataKey="marketGains" stackId="1" stroke="#22c55e" fill="url(#colorMarketGains)" />
             <Area type="monotone" dataKey="savings" stackId="1" stroke="#6366f1" fill="url(#colorSavings)" />

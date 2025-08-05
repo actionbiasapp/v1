@@ -2,7 +2,10 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { type CurrencyCode, formatCurrency, getHoldingDisplayValue, convertCurrency, formatCurrencyDisplay } from '@/app/lib/currency';
+import { formatKWithVisibility } from '@/app/lib/numberVisibility';
+import { useNumberVisibility } from '@/app/lib/context/NumberVisibilityContext';
 import { Holding } from '@/app/lib/types/shared';
+import { getAssetIcon } from '@/app/lib/iconUtils';
 import ActionButtons from './ui/ActionButtons';
 
 interface IndividualHoldingCardProps {
@@ -13,17 +16,6 @@ interface IndividualHoldingCardProps {
   onEdit: (holding: Holding) => void;
   onDelete: (holdingId: string) => void;
 }
-
-// Asset icon helper - moved from main component
-const getAssetIcon = (symbol: string): string => {
-  const icons: { [key: string]: string } = {
-    'NVDA': '🇺🇸', 'GOOG': '🇺🇸', 'TSLA': '🇺🇸', 'IREN': '🇺🇸',
-    'VUAA': '🇺🇸', 'INDIA': '🇮🇳', 'SGD': '🇸🇬', 'USDC': '💵',
-    'BTC': '₿', 'WBTC': '₿', 'GOLD': '🥇', 'HIMS': '🇺🇸', 'UNH': '🇺🇸',
-    'AAPL': '🇺🇸', 'AMGN': '🇺🇸', 'CRM': '🇺🇸', 'ETH': '⟠'
-  };
-  return icons[symbol] || '📊';
-};
 
 function formatK(value: number | null | undefined): string {
   if (value === null || value === undefined) {
@@ -44,6 +36,7 @@ const IndividualHoldingCard = React.memo(({
   onEdit, 
   onDelete 
 }: IndividualHoldingCardProps) => {
+  const { numbersVisible } = useNumberVisibility();
   
   const handleEdit = useCallback((e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -111,7 +104,7 @@ const IndividualHoldingCard = React.memo(({
     }
   }
   // Round main value to nearest k, no decimals
-  const mainDisplayK = formatK(mainDisplayValue);
+  const mainDisplayK = formatKWithVisibility(mainDisplayValue, numbersVisible);
 
   // Calculate profit/loss
   const calculateProfitLoss = () => {
@@ -164,7 +157,7 @@ const IndividualHoldingCard = React.memo(({
           <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
             <div className="flex items-center gap-1 leading-none">
               <span className="font-medium text-white text-sm leading-none align-middle">
-                {getAssetIcon(holding.symbol)} {holding.symbol}
+                {getAssetIcon(holding.symbol, holding.name)} {holding.symbol}
               </span>
               {holding.quantity && (
                 <span className="text-slate-300 text-sm font-medium leading-none align-middle">
@@ -195,17 +188,17 @@ const IndividualHoldingCard = React.memo(({
               <div className="flex items-center gap-4 text-xs">
                 <div className="flex items-center gap-1">
                   <span className="text-slate-400">Buy:</span>
-                  <span className="text-white font-medium">{formatK(holding.unitPrice)} {holding.entryCurrency || 'SGD'}</span>
+                  <span className="text-white font-medium">{formatKWithVisibility(holding.unitPrice, numbersVisible)} {holding.entryCurrency || 'SGD'}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="text-slate-400">Current:</span>
-                  <span className="text-white font-medium">{formatK(holding.currentUnitPrice)} {holding.entryCurrency || 'SGD'}</span>
+                  <span className="text-white font-medium">{formatKWithVisibility(holding.currentUnitPrice, numbersVisible)} {holding.entryCurrency || 'SGD'}</span>
                 </div>
                 {hasData && (
                   <div className={`flex items-center gap-1 ${
                     profitLoss >= 0 ? 'text-green-400' : 'text-red-400'
                   }`}>
-                    <span>{profitLoss >= 0 ? '+' : ''}{formatK(profitLoss)} {displayCurrency}</span>
+                    <span>{profitLoss >= 0 ? '+' : ''}{formatKWithVisibility(profitLoss, numbersVisible)} {displayCurrency}</span>
                     <span>({profitLoss >= 0 ? '+' : ''}{profitLossPercent.toFixed(1)}%)</span>
                   </div>
                 )}
@@ -218,7 +211,7 @@ const IndividualHoldingCard = React.memo(({
         <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
           <div className="text-right">
             <div className="text-white font-medium text-xs">
-              {formatCurrencyDisplay(holding, displayCurrency, exchangeRates)}
+              {numbersVisible ? formatCurrencyDisplay(holding, displayCurrency, exchangeRates) : '••••••'}
             </div>
             <div className="text-slate-400 text-xs">
               {percentageOfCategory}%

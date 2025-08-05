@@ -14,24 +14,46 @@ interface AgentMessage {
     entities: any;
     message: string;
   };
+  completedAction?: {
+    intent: string;
+    entities: any;
+    message: string;
+    canUndo: boolean;
+  };
 }
 
 interface AgentChatProps {
   context: AgentContext;
   onPortfolioUpdate?: () => void;
+  insights?: any[];
 }
 
-export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps) {
+// Unified state machine for chat
+type ChatState = 'idle' | 'processing' | 'awaiting_confirmation' | 'executing_action' | 'error';
+
+interface ChatStateMachine {
+  state: ChatState;
+  pendingAction?: any;
+  lastAction?: any;
+  error?: string;
+}
+
+export default function AgentChat({ context, onPortfolioUpdate, insights = [] }: AgentChatProps) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isExecutingAction, setIsExecutingAction] = useState(false);
+  const [chatState, setChatState] = useState<ChatStateMachine>({ state: 'idle' });
   const [isOpen, setIsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Default suggestions for new chat
+  const defaultSuggestions = [
+    'Add a new holding',
+    'Show portfolio summary', 
+    'Show my biggest holding'
+  ];
+
   const scrollToBottom = () => {
-    // Only scroll if we're near the bottom to avoid disrupting user's view
     const chatContainer = messagesEndRef.current?.parentElement;
     if (chatContainer) {
       const isNearBottom = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight < 100;
@@ -45,17 +67,28 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
     scrollToBottom();
   }, [messages]);
 
-  // Focus input when chat is opened
   useEffect(() => {
     if (isOpen && inputRef.current) {
       setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
     }
-  }, [isOpen]);
+    
+    // Show welcome message with suggestions when chat is first opened
+    if (isOpen && messages.length === 0) {
+      const welcomeMessage: AgentMessage = {
+        type: 'agent',
+        content: 'Hello! I\'m your portfolio assistant. How can I help you today?',
+        suggestions: defaultSuggestions,
+        timestamp: new Date()
+      };
+      setMessages([welcomeMessage]);
+    }
+  }, [isOpen, messages.length]);
 
-  const sendMessage = async (message: string) => {
-    if (!message.trim() || isProcessing) return;
+  // Unified message processing
+  const processMessage = async (message: string) => {
+    if (!message.trim() || chatState.state === 'processing' || chatState.state === 'executing_action') return;
 
     const userMessage: AgentMessage = {
       type: 'user',
@@ -65,426 +98,325 @@ export default function AgentChat({ context, onPortfolioUpdate }: AgentChatProps
 
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
-    setIsProcessing(true);
-    
-    // Store the input ref to restore focus later
-    const currentInputRef = inputRef.current;
+    setChatState({ state: 'processing' });
 
     try {
       const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          message, 
+          message,
           context,
-          displayCurrency: context.displayCurrency 
+          displayCurrency: context.displayCurrency
         })
       });
 
-      const result = await response.json();
+      if (!response.ok) {
+        throw new Error('Failed to process message');
+      }
 
-      // Handle message processing responses (no success field)
-      if (result.action) {
-        // Handle confirmation actions with a single message
-        if (result.action === 'confirm' && result.data) {
-          const confirmationMessage: AgentMessage = {
-            type: 'agent',
-            content: `${result.message}\n\nWould you like me to proceed?`,
-            data: result.data,
-            suggestions: result.suggestions,
-            pendingAction: result.requires_confirmation ? {
-              intent: result.data.intent,
-              entities: result.data.entities,
-              message: result.message
-            } : undefined,
-            timestamp: new Date()
-          };
-          setMessages(prev => [...prev, confirmationMessage]);
-        } else if (result.action === 'clarify') {
-          // Handle clarification requests
-          const clarificationMessage: AgentMessage = {
-            type: 'agent',
-            content: result.message,
-            data: result.data,
-            suggestions: result.suggestions,
-            timestamp: new Date()
-          };
-          setMessages(prev => [...prev, clarificationMessage]);
-        } else {
-          const agentMessage: AgentMessage = {
-            type: 'agent',
-            content: result.message,
-            data: result.data,
-            suggestions: result.suggestions,
-            timestamp: new Date()
-          };
-          setMessages(prev => [...prev, agentMessage]);
-        }
-      } else if (result.success !== undefined) {
-        // Handle action execution responses (has success field)
-        if (result.success) {
-          const agentMessage: AgentMessage = {
-            type: 'agent',
-            content: result.message,
-            data: result.data,
-            timestamp: new Date()
-          };
-          setMessages(prev => [...prev, agentMessage]);
-        } else {
-          const errorMessage: AgentMessage = {
-            type: 'agent',
-            content: result.message || 'Sorry, I encountered an error.',
-            timestamp: new Date()
-          };
-          setMessages(prev => [...prev, errorMessage]);
-        }
-      } else {
-        const errorMessage: AgentMessage = {
+      const result = await response.json();
+      
+      if (result.action === 'confirm' && result.requires_confirmation) {
+        // Awaiting confirmation
+        setChatState({ 
+          state: 'awaiting_confirmation',
+          pendingAction: {
+            intent: result.data.intent,
+            entities: result.data.entities,
+            message: result.message
+          }
+        });
+
+        const agentMessage: AgentMessage = {
           type: 'agent',
-          content: result.message || 'Sorry, I encountered an error.',
+          content: result.message,
+          suggestions: ['Yes', 'No'],
           timestamp: new Date()
         };
-        setMessages(prev => [...prev, errorMessage]);
+
+        setMessages(prev => [...prev, agentMessage]);
+      } else if (result.action === 'execute' && result.data) {
+        // Direct execution
+        await executeAction(result.data);
+      } else {
+        // Regular response
+        setChatState({ state: 'idle' });
+        
+        const agentMessage: AgentMessage = {
+          type: 'agent',
+          content: result.message,
+          suggestions: result.suggestions,
+          timestamp: new Date()
+        };
+
+        setMessages(prev => [...prev, agentMessage]);
       }
     } catch (error) {
+      console.error('Error processing message:', error);
+      setChatState({ state: 'error', error: 'Failed to process message' });
+      
       const errorMessage: AgentMessage = {
         type: 'agent',
-        content: 'Sorry, I encountered a network error. Please try again.',
+        content: 'Sorry, I encountered an error. Please try again.',
         timestamp: new Date()
       };
+      
       setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsProcessing(false);
-      
-      // More aggressive focus restoration with multiple strategies
-      const restoreFocus = () => {
-        // Try the stored ref first
-        if (currentInputRef && currentInputRef.focus) {
-          currentInputRef.focus();
-          return true;
-        }
-        
-        // Try the current ref
-        if (inputRef.current && inputRef.current.focus) {
-          inputRef.current.focus();
-          return true;
-        }
-        
-        // Try finding the input by selector as last resort
-        const inputElement = document.querySelector('input[type="text"]') as HTMLInputElement;
-        if (inputElement && inputElement.focus) {
-          inputElement.focus();
-          return true;
-        }
-        
-        return false;
-      };
-      
-      // Multiple attempts with increasing delays
-      setTimeout(() => restoreFocus(), 50);
-      setTimeout(() => restoreFocus(), 150);
-      setTimeout(() => restoreFocus(), 300);
-      setTimeout(() => restoreFocus(), 600);
     }
   };
 
-  const executeAction = async (data: any) => {
-    const action: AgentAction = {
-      type: data.intent,
-      data: data.entities
-    };
+  // Unified action execution
+  const executeAction = async (actionData: any) => {
+    setChatState({ state: 'executing_action' });
 
     try {
       const response = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
+        body: JSON.stringify({ action: actionData })
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to execute action');
+      }
 
       const result = await response.json();
 
-      const actionMessage: AgentMessage = {
-        type: 'agent',
-        content: result.message,
-        timestamp: new Date()
-      };
+      if (result.success) {
+        const actionMessage: AgentMessage = {
+          type: 'agent',
+          content: result.message,
+          completedAction: {
+            intent: actionData.type,
+            entities: actionData.data,
+            message: result.message,
+            canUndo: true
+          },
+          timestamp: new Date()
+        };
 
-      setMessages(prev => [...prev, actionMessage]);
+        setMessages(prev => [...prev, actionMessage]);
+        setChatState({ 
+          state: 'idle',
+          lastAction: {
+            intent: actionData.type,
+            entities: {
+              ...actionData.data,
+              originalData: result.originalData
+            }
+          }
+        });
 
-      if (result.success && onPortfolioUpdate) {
-        onPortfolioUpdate();
+        if (onPortfolioUpdate) {
+          onPortfolioUpdate();
+        }
+      } else {
+        throw new Error(result.message || 'Action failed');
       }
-      
-      // Restore focus after action execution
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
     } catch (error) {
+      console.error('Error executing action:', error);
+      setChatState({ state: 'error', error: 'Failed to execute action' });
+      
       const errorMessage: AgentMessage = {
         type: 'agent',
-        content: 'Failed to execute action. Please try again.',
+        content: `Failed to execute action: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp: new Date()
       };
-      setMessages(prev => [...prev, errorMessage]);
       
-      // Restore focus after error too
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  };
+
+  // Handle simple confirmations
+  const handleConfirmation = async (isConfirmed: boolean) => {
+    if (chatState.state !== 'awaiting_confirmation' || !chatState.pendingAction) {
+      return;
+    }
+
+    if (isConfirmed) {
+      await executeAction({
+        type: 'confirm_action',
+        data: {
+          originalAction: chatState.pendingAction.intent,
+          originalEntities: chatState.pendingAction.entities
+        }
+      });
+    } else {
+      // Cancel action
+      setChatState({ state: 'idle' });
+      
+      const cancelMessage: AgentMessage = {
+        type: 'agent',
+        content: 'Action cancelled. How else can I help you?',
+        suggestions: defaultSuggestions,
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, cancelMessage]);
+    }
+  };
+
+  // Handle undo action
+  const handleUndoAction = async (completedAction: any) => {
+    if (!chatState.lastAction) return;
+
+    setChatState({ state: 'executing_action' });
+
+    try {
+      const response = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: {
+            type: 'undo_action',
+            data: {
+              originalAction: chatState.lastAction.intent,
+              originalEntities: chatState.lastAction.entities
+            }
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to undo action');
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        const undoMessage: AgentMessage = {
+          type: 'agent',
+          content: result.message,
+          timestamp: new Date()
+        };
+
+        setMessages(prev => [...prev, undoMessage]);
+        setChatState({ state: 'idle' });
+
+        if (onPortfolioUpdate) {
+          onPortfolioUpdate();
+        }
+      } else {
+        throw new Error(result.message || 'Undo failed');
+      }
+    } catch (error) {
+      console.error('Error undoing action:', error);
+      setChatState({ state: 'error', error: 'Failed to undo action' });
+      
+      const errorMessage: AgentMessage = {
+        type: 'agent',
+        content: `Failed to undo action: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    sendMessage(inputValue);
+    if (inputValue.trim()) {
+      processMessage(inputValue);
+    }
   };
 
   const handleSuggestionClick = async (suggestion: string) => {
-    if (isProcessing) return;
-
-    // Simply send the suggestion as a regular message
-    await sendMessage(suggestion);
-  };
-
-  const handleConfirmAction = async (pendingAction: any) => {
-    if (isExecutingAction) return; // Prevent duplicate executions
-    
-    setIsExecutingAction(true);
-    
-    const action: AgentAction = {
-      type: pendingAction.intent,
-      data: pendingAction.entities
-    };
-
-    try {
-      const response = await fetch('/api/agent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
-      });
-
-      const result = await response.json();
-
-      const actionMessage: AgentMessage = {
-        type: 'agent',
-        content: result.message,
-        timestamp: new Date()
-      };
-
-      // Remove the pending action from the previous message
-      setMessages(prev => prev.map(msg => 
-        msg.pendingAction ? { ...msg, pendingAction: undefined } : msg
-      ));
-
-      setMessages(prev => [...prev, actionMessage]);
-
-      if (result.success && onPortfolioUpdate) {
-        onPortfolioUpdate();
-      }
-      
-      // Restore focus after confirmation action
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-    } catch (error) {
-      const errorMessage: AgentMessage = {
-        type: 'agent',
-        content: 'Failed to execute action. Please try again.',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-      
-      // Restore focus after error too
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-    } finally {
-      setIsExecutingAction(false);
-      
-      // Final focus attempt
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 200);
+    if (suggestion === 'Yes') {
+      await handleConfirmation(true);
+    } else if (suggestion === 'No') {
+      await handleConfirmation(false);
+    } else {
+      await processMessage(suggestion);
     }
   };
-  
-  const handleCancelAction = () => {
-    // Remove the pending action from the previous message
-    setMessages(prev => prev.map(msg => 
-      msg.pendingAction ? { ...msg, pendingAction: undefined } : msg
-    ));
-
-    const cancelMessage: AgentMessage = {
-      type: 'agent',
-      content: 'Action cancelled. How else can I help you?',
-      timestamp: new Date()
-    };
-    setMessages(prev => [...prev, cancelMessage]);
-    
-    // Restore focus after cancel
-    setTimeout(() => {
-      inputRef.current?.focus();
-    }, 100);
-  };
-
-  const suggestions = [
-    'Show my portfolio summary',
-    'What\'s my biggest holding?',
-    'Show allocation gaps',
-    'What\'s my total value?',
-    'Show Core holdings only',
-    'Add 100 shares of [SYMBOL] at $150',
-    '2023 income was $120,000',
-    'How is my portfolio performing?'
-  ];
-
-  if (!isOpen) {
-    return (
-      <div className="fixed bottom-6 right-4 z-50">
-        <button
-          onClick={() => setIsOpen(true)}
-          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white p-4 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2 min-w-[56px] min-h-[56px]"
-          title="Ask Portfolio Agent"
-        >
-          <span className="text-xl">🤖</span>
-          <span className="font-medium text-sm hidden sm:inline">Agent</span>
-        </button>
-      </div>
-    );
-  }
 
   return (
-    <div className="fixed inset-4 sm:bottom-6 sm:right-4 sm:left-auto sm:top-auto z-50 w-auto h-auto max-w-sm bg-gray-800/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-700/50 flex flex-col max-h-[80vh]">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-700/30">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🤖</span>
-          <h3 className="text-white font-semibold text-sm">Portfolio Agent</h3>
-        </div>
-        <button
-          onClick={() => setIsOpen(false)}
-          className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-700/50 transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
+    <div className="fixed bottom-4 right-4 z-50">
+      {/* Chat Toggle Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="bg-glass-primary backdrop-blur-xl border border-glass-border hover:border-glass-border-hover text-text-primary rounded-full p-3 shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl"
+        aria-label="Toggle chat"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+        </svg>
+      </button>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-        {messages.length === 0 && (
-          <div className="text-center text-gray-400 text-sm">
-            <p className="mb-3">Ask me to manage your portfolio!</p>
-            <div className="space-y-2">
-              {suggestions.map((suggestion, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleSuggestionClick(suggestion)}
-                  className="block w-full text-left text-xs text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-gray-700/30 transition-colors"
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
+      {/* Chat Interface */}
+      {isOpen && (
+        <div className="absolute bottom-16 right-0 w-96 h-96 bg-glass-primary backdrop-blur-xl rounded-xl shadow-xl border border-glass-border flex flex-col">
+          {/* Chat Header */}
+          <div className="bg-glass-secondary backdrop-blur-xl text-text-primary p-4 rounded-t-xl border-b border-glass-border">
+            <h3 className="text-lg font-semibold">Portfolio Assistant</h3>
+            <p className="text-sm text-text-secondary">Ask me about your portfolio</p>
           </div>
-        )}
-        
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[85%] p-3 rounded-2xl text-sm ${
-                message.type === 'user'
-                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white'
-                  : 'bg-gray-700/50 text-gray-200'
-              }`}
-            >
-              <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
-              
-              {message.pendingAction && (
-                <div className="mt-3 flex flex-col sm:flex-row gap-2">
-                  <button
-                    onClick={() => handleConfirmAction(message.pendingAction)}
-                    disabled={isExecutingAction}
-                    className={`px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
-                      isExecutingAction 
-                        ? 'bg-gray-500 text-gray-300 cursor-not-allowed' 
-                        : 'bg-green-600 text-white hover:bg-green-700 shadow-sm'
-                    }`}
-                  >
-                    {isExecutingAction ? 'Executing...' : 'Yes, proceed'}
-                  </button>
-                  <button
-                    onClick={handleCancelAction}
-                    disabled={isExecutingAction}
-                    className={`px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
-                      isExecutingAction 
-                        ? 'bg-gray-500 text-gray-300 cursor-not-allowed' 
-                        : 'bg-gray-600 text-white hover:bg-gray-700 shadow-sm'
-                    }`}
-                  >
-                    No, cancel
-                  </button>
-                </div>
-              )}
-              
-              {message.suggestions && message.suggestions.length > 0 && (
-                <div className="mt-3 space-y-1">
-                  {message.suggestions.map((suggestion, idx) => (
+
+          {/* Messages Container */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.map((message, index) => (
+              <div key={index} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                  message.type === 'user' 
+                    ? 'bg-accent-primary text-white' 
+                    : 'bg-glass-secondary text-text-primary border border-glass-border'
+                }`}>
+                  <p className="text-sm">{message.content}</p>
+                  
+                  {/* Suggestions */}
+                  {message.suggestions && message.suggestions.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {message.suggestions.map((suggestion, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSuggestionClick(suggestion)}
+                          className="block w-full text-left px-2 py-1 text-xs bg-glass-primary bg-opacity-20 rounded hover:bg-opacity-30 transition-colors border border-glass-border"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Undo Button */}
+                  {message.completedAction && (
                     <button
-                      key={idx}
-                      onClick={() => handleSuggestionClick(suggestion)}
-                      className="block w-full text-left text-xs text-blue-400 hover:text-blue-300 p-2 rounded-lg hover:bg-gray-700/30 transition-colors"
+                      onClick={() => handleUndoAction(message.completedAction)}
+                      className="mt-2 text-xs text-accent-primary hover:text-accent-primary-hover underline"
                     >
-                      {suggestion}
+                      Undo
                     </button>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        ))}
-        
-        {isProcessing && (
-          <div className="flex justify-start">
-            <div className="bg-gray-700/50 text-gray-200 p-3 rounded-2xl">
-              <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-400 border-t-transparent"></div>
-                <span className="text-sm">Thinking...</span>
               </div>
-            </div>
+            ))}
+            <div ref={messagesEndRef} />
           </div>
-        )}
-        
-        <div ref={messagesEndRef} />
-      </div>
 
-      {/* Input */}
-      <form onSubmit={handleSubmit} className="p-4 border-t border-gray-700/30">
-        <div className="flex space-x-2">
-          <input
-            ref={inputRef}
-            type="text"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Ask me to add, edit, or analyze..."
-            className="flex-1 bg-gray-700/50 text-white text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 border border-gray-600/30"
-            disabled={isProcessing}
-          />
-          <button
-            type="submit"
-            disabled={isProcessing || !inputValue.trim()}
-            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md transition-all duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
-          </button>
+          {/* Input Form */}
+          <form onSubmit={handleSubmit} className="p-4 border-t border-glass-border bg-glass-secondary">
+            <div className="flex space-x-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Ask about your portfolio..."
+                className="flex-1 px-3 py-2 bg-glass-primary border border-glass-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-transparent text-text-primary placeholder-text-quaternary backdrop-blur-sm"
+                disabled={chatState.state === 'processing' || chatState.state === 'executing_action'}
+              />
+              <button
+                type="submit"
+                disabled={!inputValue.trim() || chatState.state === 'processing' || chatState.state === 'executing_action'}
+                className="px-4 py-2 bg-accent-primary text-white rounded-lg hover:bg-accent-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {chatState.state === 'processing' || chatState.state === 'executing_action' ? '...' : 'Send'}
+              </button>
+            </div>
+          </form>
         </div>
-      </form>
+      )}
     </div>
   );
 } 

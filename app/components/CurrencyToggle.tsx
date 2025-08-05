@@ -91,7 +91,7 @@ export function CurrencyToggleSimple({
             key={code}
             onClick={() => onCurrencyChange(code as CurrencyCode)}
             className={`
-              px-2.5 py-2 rounded-lg text-sm font-medium transition-all duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center
+              px-2 py-2 rounded-lg text-sm font-medium transition-all duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center
               ${isSelected
                 ? 'bg-white/10 text-white shadow-sm'
                 : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/30'
@@ -100,7 +100,7 @@ export function CurrencyToggleSimple({
             title={`View portfolio in ${info.name}`}
           >
             <span className="text-sm">{info.flag}</span>
-            <span className="ml-1 text-xs font-medium">{code}</span>
+            <span className="ml-1 text-xs font-medium hidden md:inline">{code}</span>
           </button>
         );
       })}

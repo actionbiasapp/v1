@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { FinancialProfile, createDefaultFinancialProfile, YearlyData } from '@/app/lib/types/shared';
+import { FinancialProfile, createDefaultFinancialProfile, YearlyData, MonthlySnapshot } from '@/app/lib/types/shared';
 import { calculateFinancialMetrics } from '@/app/lib/financialUtils';
+import { CardLoader } from '@/app/components/ui/Loader';
 import ActionButtons from '../ui/ActionButtons';
 import { ProfileOverviewTab } from './ProfileOverviewTab';
 import { ManageYearsTab } from './ManageYearsTab';
-import { FIPlanningTab } from './FIPlanningTab';
+import { FIPlanningAndMilestonesTab } from './FIPlanningAndMilestonesTab';
+import { MonthlySnapshotsTab } from './MonthlySnapshotsTab';
 
 interface FinancialSetupModalProps {
   isOpen: boolean;
@@ -45,6 +47,7 @@ export default function FinancialSetupModal({
   allocationTargets: initialAllocationTargets
 }: FinancialSetupModalProps) {
   const [yearlyData, setYearlyData] = useState<YearlyData[]>([]);
+  const [monthlySnapshots, setMonthlySnapshots] = useState<MonthlySnapshot[]>([]);
   const [fiData, setFiData] = useState<FIData>({ goal: 2500000, targetYear: 2032 });
   const [userProfile, setUserProfile] = useState<UserProfile>({ 
     taxStatus: 'Employment Pass' as TaxStatus, 
@@ -59,6 +62,8 @@ export default function FinancialSetupModal({
     rebalanceThreshold: 5,
   });
   const [loading, setLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [milestones, setMilestones] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState(0);
   const [showAddYear, setShowAddYear] = useState(false);
   const [editingYear, setEditingYear] = useState<YearlyData | null>(null);
@@ -76,6 +81,8 @@ export default function FinancialSetupModal({
   useEffect(() => {
     if (isOpen) {
       loadProfile();
+      loadMilestones();
+      loadMonthlySnapshots();
     }
   }, [isOpen]);
 
@@ -105,6 +112,7 @@ export default function FinancialSetupModal({
   }, [processedYearlyData, portfolioTotal]);
 
   const loadProfile = async () => {
+    setProfileLoading(true);
     try {
       const response = await fetch('/api/financial-profile');
       if (response.ok) {
@@ -132,7 +140,7 @@ export default function FinancialSetupModal({
               income: Number(d.income || 0),
               expenses: Number(d.expenses || 0),
               savings: Number(d.savings || 0),
-              srsContributions: Number(d.srs || 0),
+              srs: Number(d.srs || 0),
               netWorth: Number(d.netWorth || 0),
             }));
             setYearlyData(numericYearlyData);
@@ -142,6 +150,36 @@ export default function FinancialSetupModal({
       }
     } catch (error) {
       console.error('Failed to load profile:', error);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const loadMilestones = async () => {
+    try {
+      const response = await fetch('/api/fi-milestones');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setMilestones(data.milestones || []);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load milestones:', error);
+    }
+  };
+
+  const loadMonthlySnapshots = async () => {
+    try {
+      const response = await fetch('/api/monthly-snapshot');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setMonthlySnapshots(data.data || []);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load monthly snapshots:', error);
     }
   };
 
@@ -209,7 +247,7 @@ export default function FinancialSetupModal({
       annualIncome: currentYearData?.income || 0,
       incomeCurrency: 'SGD',
       taxStatus: userProfile.taxStatus,
-      currentSRSContributions: currentYearData?.srsContributions || 0,
+              currentSRSContributions: currentYearData?.srs || 0,
       fiGoal: fiData.goal,
       fiTargetYear: fiData.targetYear,
       firstMillionTarget: true,
@@ -232,7 +270,7 @@ export default function FinancialSetupModal({
     const fields = [
       currentYearData?.income,
       userProfile.taxStatus,
-      currentYearData?.srsContributions !== undefined,
+              currentYearData?.srs !== undefined,
       fiData.goal,
       fiData.targetYear
     ];
@@ -252,24 +290,42 @@ export default function FinancialSetupModal({
     // For the current year, auto-populate net worth from portfolio total
     if (!latestYear || latestYear.year < currentYear) {
       return {
+        id: `default-${currentYear}`,
         year: currentYear,
         income: 120000,
         expenses: 72000,
         savings: 48000,
-        srsContributions: 0,
-        netWorth: portfolioTotal || 350000 // Use portfolio total
+        srs: 0,
+        netWorth: portfolioTotal || 350000, // Use portfolio total
+        marketGains: 0,
+        returnPercent: 0,
+        savingsRate: 40,
+        isEstimated: true,
+        confidence: 'low',
+        notes: 'Auto-generated default data',
+        createdAt: new Date(),
+        updatedAt: new Date()
       };
     }
     
     // For future years, project based on the latest year's data
     const suggestedYear = Math.max(currentYear, latestYear.year + 1);
     return {
+      id: `projected-${suggestedYear}`,
       year: suggestedYear,
       income: Math.round(latestYear.income * 1.05),
       expenses: Math.round(latestYear.expenses * 1.03),
       savings: Math.round(latestYear.income * 1.05) - Math.round(latestYear.expenses * 1.03),
-      srsContributions: 0,
-      netWorth: Math.round(latestYear.netWorth * 1.15)
+      srs: 0,
+      netWorth: Math.round(latestYear.netWorth * 1.15),
+      marketGains: 0,
+      returnPercent: 0,
+      savingsRate: 40,
+      isEstimated: true,
+      confidence: 'low',
+      notes: 'Projected data based on previous year',
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
   };
 
@@ -292,19 +348,68 @@ export default function FinancialSetupModal({
 
   if (!isOpen) return null;
 
-  const tabs = ['📊 Profile Overview', '📅 Manage Years', '🎯 FI Planning'];
+  const tabs = ['📊 Profile Overview', '📅 Manage Years', '🎯 FI Planning & Milestones', '📈 Monthly Snapshots'];
   const currentYearData = updatedYearlyData.find(y => y.year === currentYear);
   const currentNetWorth = currentYearData?.netWorth || 0;
   const fiProgress = (currentNetWorth / fiData.goal) * 100;
-  const srsProgress = ((currentYearData?.srsContributions || 0) / (userProfile.srsLimit || 1)) * 100;
+  const srsProgress = ((currentYearData?.srs || 0) / (userProfile.srsLimit || 1)) * 100;
 
   return createPortal(
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={handleClose} style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
-      <div className="bg-slate-800 rounded-2xl border border-slate-700 w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={handleClose} style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
+      <div className="bg-slate-800 rounded-t-2xl sm:rounded-2xl border border-slate-700 w-full h-[90vh] sm:h-auto sm:max-w-4xl sm:max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         
+        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
-          <h2 className="text-lg font-semibold text-white">Financial Profile Setup</h2>
-          <button onClick={handleClose} className="text-slate-400 hover:text-white">✕</button>
+          <h2 className="text-lg font-semibold text-white">Financial Profile</h2>
+          <button onClick={handleClose} className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-700/50 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Mobile Navigation */}
+        <div className="sm:hidden border-b border-slate-700">
+          <div className="flex items-center justify-between p-4">
+            <button
+              onClick={() => setActiveTab(Math.max(0, activeTab - 1))}
+              disabled={activeTab === 0}
+              className="p-2 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed rounded-lg hover:bg-slate-700/50 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            
+            <div className="flex-1 text-center px-4">
+              <div className="text-white font-medium text-sm">{tabs[activeTab].split(' ').slice(1).join(' ')}</div>
+              <div className="text-slate-400 text-xs mt-1">{activeTab + 1} of {tabs.length}</div>
+            </div>
+            
+            <button
+              onClick={() => setActiveTab(Math.min(tabs.length - 1, activeTab + 1))}
+              disabled={activeTab === tabs.length - 1}
+              className="p-2 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed rounded-lg hover:bg-slate-700/50 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+          
+          {/* Tab Indicators */}
+          <div className="flex justify-center px-4 pb-4">
+            {tabs.map((_, index) => (
+              <div
+                key={index}
+                className={`h-1 flex-1 mx-1 rounded-full transition-all duration-300 ${
+                  index === activeTab 
+                    ? 'bg-blue-500' 
+                    : 'bg-slate-600'
+                }`}
+              />
+            ))}
+          </div>
         </div>
 
         {/* Desktop Tabs */}
@@ -324,63 +429,60 @@ export default function FinancialSetupModal({
           ))}
         </div>
 
-        {/* Mobile Swipe Navigation */}
-        <div className="sm:hidden p-2 border-b border-slate-700">
-          <div className="flex justify-between items-center">
-            <button
-              onClick={() => setActiveTab(Math.max(0, activeTab - 1))}
-              disabled={activeTab === 0}
-              className="p-2 text-slate-400 hover:text-white disabled:opacity-50"
-            >
-              ←
-            </button>
-            <span className="text-white font-medium">{tabs[activeTab]}</span>
-            <button
-              onClick={() => setActiveTab(Math.min(tabs.length - 1, activeTab + 1))}
-              disabled={activeTab === tabs.length - 1}
-              className="p-2 text-slate-400 hover:text-white disabled:opacity-50"
-            >
-              →
-            </button>
-          </div>
-        </div>
-
+        {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-          {activeTab === 0 && (
-            <ProfileOverviewTab 
-              yearlyData={updatedYearlyData}
-              fiData={fiData}
-              userProfile={userProfile}
-              fiProgress={fiProgress}
-              srsProgress={srsProgress}
-              currentNetWorth={currentNetWorth}
-            />
-          )}
-          
-          {activeTab === 1 && (
-            <ManageYearsTab
-              yearlyData={updatedYearlyData}
-              showAddYear={showAddYear}
-              setShowAddYear={setShowAddYear}
-              editingYear={editingYear}
-              setEditingYear={setEditingYear}
-              addYear={addYear}
-              updateYear={updateYear}
-              deleteYear={deleteYear}
-              getSmartDefaults={getSmartDefaults}
-            />
-          )}
+          {profileLoading ? (
+            <CardLoader className="my-8" />
+          ) : (
+            <>
+              {activeTab === 0 && (
+                <ProfileOverviewTab 
+                  yearlyData={updatedYearlyData}
+                  monthlySnapshots={monthlySnapshots}
+                  fiData={fiData}
+                  userProfile={userProfile}
+                  fiProgress={fiProgress}
+                  srsProgress={srsProgress}
+                  currentNetWorth={currentNetWorth}
+                />
+              )}
+              
+              {activeTab === 1 && (
+                <ManageYearsTab
+                  yearlyData={updatedYearlyData}
+                  showAddYear={showAddYear}
+                  setShowAddYear={setShowAddYear}
+                  editingYear={editingYear}
+                  setEditingYear={setEditingYear}
+                  addYear={addYear}
+                  updateYear={updateYear}
+                  deleteYear={deleteYear}
+                  getSmartDefaults={getSmartDefaults}
+                />
+              )}
 
-          {activeTab === 2 && (
-            <FIPlanningTab
-              fiData={fiData}
-              setFiData={setFiData}
-              userProfile={userProfile}
-              setUserProfile={setUserProfile}
-              yearlyData={updatedYearlyData}
-              allocationTargets={allocationTargets}
-              setAllocationTargets={setAllocationTargets}
-            />
+              {activeTab === 2 && (
+                <FIPlanningAndMilestonesTab
+                  fiData={fiData}
+                  setFiData={setFiData}
+                  userProfile={userProfile}
+                  setUserProfile={setUserProfile}
+                  yearlyData={updatedYearlyData}
+                  allocationTargets={allocationTargets}
+                  setAllocationTargets={setAllocationTargets}
+                  milestones={milestones}
+                  onMilestonesChange={setMilestones}
+                />
+              )}
+              
+              {activeTab === 3 && (
+                <MonthlySnapshotsTab
+                  portfolioTotal={portfolioTotal}
+                  displayCurrency="SGD"
+                  yearlyData={updatedYearlyData}
+                />
+              )}
+            </>
           )}
         </div>
 

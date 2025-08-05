@@ -14,7 +14,7 @@ import { QuickQueryHandler } from './quickQueries';
 import { DataValidator } from './validator';
 import { SmartHoldingMatcher, SmartMatchResult } from './smartMatching';
 import { ContextProvider, RichContext } from './contextProvider';
-import { type CurrencyCode } from '@/app/lib/currency';
+import { type CurrencyCode, convertToAllCurrencies } from '@/app/lib/currency';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -26,12 +26,18 @@ export class PortfolioAgent {
       
       console.log('🔍 Processing message:', message);
       
+      // Handle simple confirmations first (yes/no/ok)
+      const simpleConfirmation = this.handleSimpleConfirmation(message);
+      if (simpleConfirmation) {
+        return simpleConfirmation;
+      }
+      
       // First, try quick queries (no OpenAI cost)
       const quickResult = await QuickQueryHandler.handleQuery(
         message,
         context.currentHoldings || [],
         (context.displayCurrency as CurrencyCode) || 'SGD',
-        null, // exchangeRates can be added later
+        context.exchangeRates || null,
         context.financialProfile
       );
       
@@ -74,7 +80,7 @@ export class PortfolioAgent {
           data: { intent: 'error', entities: {} },
           message: 'Sorry, I encountered an error processing your request. Please try again.',
           confidence: 0,
-          suggestions: ['Try rephrasing your request', 'Ask about your portfolio value', 'Show my holdings']
+          suggestions: ['Try rephrasing your request', 'Show portfolio summary', 'Add a new holding']
         };
       }
       
@@ -88,7 +94,7 @@ export class PortfolioAgent {
         message: llmResponse.message,
         confidence: llmResponse.confidence,
         suggestions: llmResponse.suggestions,
-        requires_confirmation: llmResponse.requires_confirmation
+        requires_confirmation: llmResponse.requires_confirmation || false
       };
       
       // If LLM couldn't understand, return the clarification response
@@ -130,8 +136,9 @@ export class PortfolioAgent {
                     },
                     confidence: llmResponse.confidence
                   },
-                  message: `I found an existing holding: ${matchResult.bestMatch.name} (${matchResult.bestMatch.symbol}). Would you like to add ${entities.quantity} shares at $${entities.unitPrice} to this existing position?`,
-                  confidence: validation.confidence
+                  message: `I found an existing holding: ${matchResult.bestMatch.name} (${matchResult.bestMatch.symbol}). Would you like to add ${entities.quantity} shares${entities.unitPrice ? ` at $${entities.unitPrice}` : ''} to this existing position?${!entities.unitPrice ? ' Please specify the price you paid.' : ''}`,
+                  confidence: validation.confidence,
+                  requires_confirmation: true
                 };
               }
               
@@ -154,6 +161,21 @@ export class PortfolioAgent {
                     ...options,
                     'This is a new holding'
                   ]
+                };
+              }
+              
+              // If no match found, return confirmation for new holding
+              if (matchResult.suggestedAction === 'create_new') {
+                return {
+                  action: 'confirm',
+                  data: {
+                    intent: 'add_holding',
+                    entities: entities,
+                    confidence: llmResponse.confidence
+                  },
+                  message: `I'll add ${entities.quantity} shares of ${entities.symbol} at $${entities.unitPrice} to your portfolio. Please confirm.`,
+                  confidence: validation.confidence,
+                  requires_confirmation: true
                 };
               }
             }
@@ -196,7 +218,7 @@ export class PortfolioAgent {
     }
   }
   
-  static async executeAction(action: AgentAction): Promise<{ success: boolean; message: string; data?: any }> {
+  static async executeAction(action: AgentAction): Promise<{ success: boolean; message: string; data?: any; originalData?: any }> {
     try {
       switch (action.type) {
         case 'add_holding':
@@ -220,6 +242,21 @@ export class PortfolioAgent {
         case 'add_yearly_data':
           return await this.executeAddYearlyData(action.data);
           
+        case 'undo_action':
+          return await this.executeUndoAction(action.data);
+          
+        case 'confirm_action':
+          // Handle simple confirmations - this should trigger the pending action
+          if (action.data && action.data.originalAction) {
+            // Execute the original action that was pending confirmation
+            const originalAction = {
+              type: action.data.originalAction,
+              data: action.data.originalEntities
+            };
+            return await this.executeAction(originalAction);
+          }
+          return { success: true, message: 'Action confirmed. Please proceed with your request.', data: action.data };
+          
         case 'portfolio_analysis':
           const analysis = this.generatePortfolioAnalysis(action.data);
           return { success: true, message: analysis.message, data: analysis.data };
@@ -233,514 +270,479 @@ export class PortfolioAgent {
     }
   }
   
-  private static async executeAddHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
+  private static async executeAddHolding(data: any): Promise<{ success: boolean; message: string; data?: any; originalData?: any }> {
     try {
-      // Calculate the total value based on quantity and unit price
-      const totalValue = data.quantity && data.unitPrice ? data.quantity * data.unitPrice : 0;
+      const { symbol, quantity, unitPrice, category, currency = 'USD', costBasisCurrency = 'USD' } = data;
       
-      // Set values in the correct currency
-      let valueSGD = 0;
-      let valueUSD = 0;
-      let valueINR = 0;
-      
-      if (data.currency === 'USD') {
-        valueUSD = totalValue;
-        valueSGD = totalValue * 1.35; // Approximate USD to SGD conversion
-      } else if (data.currency === 'INR') {
-        valueINR = totalValue;
-        valueSGD = totalValue / 63.5; // Approximate INR to SGD conversion
-      } else {
-        // Default to SGD
-        valueSGD = totalValue;
-      }
-      
-      // Get or create user and category using shared utilities
+      // Round all numeric values to 2 decimal places
+      const roundedQuantity = Math.round(quantity * 100) / 100;
+      const roundedUnitPrice = Math.round(unitPrice * 100) / 100;
+      const roundedCostBasis = Math.round(roundedQuantity * roundedUnitPrice * 100) / 100;
+
       const user = await this.getOrCreateDefaultUser();
-      const category = await this.getOrCreateCategory(data.category, user.id);
-      
-      // Check if holding already exists
-      const existingHolding = await prisma.holdings.findFirst({
-        where: {
-          symbol: data.symbol,
+      const categoryRecord = await this.getOrCreateCategory(category, user.id);
+
+      const holding = await prisma.holdings.create({
+        data: {
+          symbol: symbol.toUpperCase(),
+          name: this.generateCompanyName(symbol),
+          quantity: roundedQuantity,
+          unitPrice: roundedUnitPrice,
+          costBasis: roundedCostBasis,
+          valueSGD: roundedCostBasis * 1.35, // Approximate conversion
+          valueUSD: roundedCostBasis,
+          valueINR: roundedCostBasis * 83, // Approximate conversion
+          entryCurrency: currency.toUpperCase(),
+          location: 'IBKR',
+          categoryId: categoryRecord.id,
           userId: user.id
         }
       });
+
+      return {
+        success: true,
+        message: `✅ Added ${roundedQuantity} shares of ${symbol.toUpperCase()} at $${roundedUnitPrice} (${currency.toUpperCase()}) for a total cost of $${roundedCostBasis} (${costBasisCurrency.toUpperCase()})`,
+        data: holding,
+        originalData: null // New holding, no original data
+      };
+    } catch (error) {
+      console.error('Error adding holding:', error);
+      return {
+        success: false,
+        message: 'Failed to add holding. Please try again.',
+        data: null
+      };
+    }
+  }
+
+  private static async executeAddToExistingHolding(data: any): Promise<{ success: boolean; message: string; data?: any; originalData?: any }> {
+    try {
+      const { symbol, quantity, unitPrice, currency = 'USD', costBasisCurrency = 'USD' } = data;
       
-      if (existingHolding) {
-        return { 
-          success: false, 
-          message: `Holding ${data.symbol} already exists in your portfolio. Please edit the existing holding instead.` 
+      // Round all numeric values to 2 decimal places
+      const roundedQuantity = Math.round(quantity * 100) / 100;
+      
+      // Handle case where unitPrice is undefined
+      let roundedUnitPrice: number;
+      if (unitPrice === undefined || unitPrice === null || isNaN(unitPrice)) {
+        // If no price specified, we need to ask the user for the price
+        return {
+          success: false,
+          message: `Please specify the price you paid for ${quantity} shares of ${symbol.toUpperCase()}. For example: "add 200 shares of IREN at $15"`,
+          data: null
         };
       }
       
-      // Generate a better company name
-      const companyName = this.generateCompanyName(data.symbol);
-      
-      // Create the holding
-      const holding = await prisma.holdings.create({
-        data: {
-          symbol: data.symbol,
-          name: companyName,
-          valueSGD: valueSGD,
-          valueUSD: valueUSD,
-          valueINR: valueINR,
-          entryCurrency: data.currency || 'SGD',
-          quantity: data.quantity,
-          unitPrice: data.unitPrice,
-          currentUnitPrice: data.unitPrice, // Set current price to unit price initially
-          categoryId: category.id,
-          location: data.location || 'IBKR',
-          userId: user.id,
-          priceSource: 'manual',
-          priceUpdated: new Date()
-        }
-      });
-      
-      return { 
-        success: true, 
-        message: `Successfully added ${data.quantity} shares of ${data.symbol} to your portfolio` 
-      };
-      
-    } catch (error) {
-      console.error('Add holding error:', error);
-      return { success: false, message: 'Database error while adding holding' };
-    }
-  }
-  
-  private static async executeAddToExistingHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
-    try {
-      const { existingHoldingId, quantity, unitPrice } = data;
+      roundedUnitPrice = Math.round(unitPrice * 100) / 100;
+      const newCostBasis = Math.round(roundedQuantity * roundedUnitPrice * 100) / 100;
 
+      const user = await this.getOrCreateDefaultUser();
+      
+      // Find existing holding
       const existingHolding = await prisma.holdings.findFirst({
-        where: { id: existingHoldingId }
+        where: {
+          symbol: symbol.toUpperCase()
+        }
       });
 
       if (!existingHolding) {
-        return { success: false, message: 'Existing holding not found' };
+        return {
+          success: false,
+          message: `Holding ${symbol.toUpperCase()} not found. Please add it as a new holding.`,
+          data: null
+        };
       }
 
-      // Calculate the total value based on quantity and unit price
-      const totalValue = quantity && unitPrice ? quantity * unitPrice : 0;
-      
-      // Set values in the correct currency
-      let valueSGD = 0;
-      let valueUSD = 0;
-      let valueINR = 0;
-      
-      if (existingHolding.entryCurrency === 'USD') {
-        valueUSD = totalValue;
-        valueSGD = totalValue * 1.35; // Approximate USD to SGD conversion
-      } else if (existingHolding.entryCurrency === 'INR') {
-        valueINR = totalValue;
-        valueSGD = totalValue / 63.5; // Approximate INR to SGD conversion
-      } else {
-        // Default to SGD
-        valueSGD = totalValue;
-      }
+      // Store original data for undo
+      const originalData = { ...existingHolding };
 
-      // Update the existing holding
-      await prisma.holdings.update({
-        where: { id: existingHoldingId },
+      // Calculate weighted average
+      const existingQuantity = Number(existingHolding.quantity) || 0;
+      const existingCostBasis = Number(existingHolding.costBasis) || 0;
+      const totalQuantity = Math.round((existingQuantity + roundedQuantity) * 100) / 100;
+      const totalCostBasis = Math.round((existingCostBasis + newCostBasis) * 100) / 100;
+      const weightedAveragePrice = Math.round((totalCostBasis / totalQuantity) * 100) / 100;
+
+      console.log('Weighted average calculation:', {
+        existingQuantity: existingQuantity,
+        newQuantity: roundedQuantity,
+        totalQuantity,
+        existingCostBasis: existingCostBasis,
+        newCostBasis,
+        totalCostBasis,
+        weightedAveragePrice
+      });
+
+      // Calculate new values based on total quantity and current unit price
+      const currentUnitPrice = Number(existingHolding.currentUnitPrice) || Number(existingHolding.unitPrice) || 0;
+      const newTotalValue = totalQuantity * currentUnitPrice;
+      
+      // Use default exchange rates for conversion
+      const defaultRates = {
+        SGD_TO_USD: 0.74,
+        SGD_TO_INR: 63.50,
+        USD_TO_SGD: 1.35,
+        USD_TO_INR: 85.50,
+        INR_TO_SGD: 0.0157,
+        INR_TO_USD: 0.0117
+      };
+      
+      // Convert to all currencies using the proper function
+      // The newTotalValue is already in the entry currency, so we pass it directly
+      const convertedValues = convertToAllCurrencies(
+        newTotalValue, 
+        existingHolding.entryCurrency as CurrencyCode, 
+        defaultRates
+      );
+      
+      // Update the holding
+      const updatedHolding = await prisma.holdings.update({
+        where: { id: existingHolding.id },
         data: {
-          quantity: (Number(existingHolding.quantity) || 0) + quantity,
-          valueSGD: (Number(existingHolding.valueSGD) || 0) + valueSGD,
-          valueUSD: (Number(existingHolding.valueUSD) || 0) + valueUSD,
-          valueINR: (Number(existingHolding.valueINR) || 0) + valueINR,
-          currentUnitPrice: unitPrice, // Update current price
-          priceUpdated: new Date()
+          quantity: totalQuantity,
+          unitPrice: weightedAveragePrice,
+          costBasis: totalCostBasis,
+          valueSGD: convertedValues.valueSGD,
+          valueUSD: convertedValues.valueUSD,
+          valueINR: convertedValues.valueINR
         }
       });
-      
-      return { 
-        success: true, 
-        message: `Successfully added ${quantity} shares of ${existingHolding.symbol} to your portfolio` 
+
+      return {
+        success: true,
+        message: `✅ Added ${roundedQuantity} shares of ${symbol.toUpperCase()} at $${roundedUnitPrice} (${currency.toUpperCase()}). New weighted average price: $${weightedAveragePrice} (${costBasisCurrency.toUpperCase()}). Total shares: ${totalQuantity}`,
+        data: updatedHolding,
+        originalData
       };
-      
     } catch (error) {
-      console.error('Add to existing holding error:', error);
-      return { success: false, message: 'Database error while adding to existing holding' };
+      console.error('Error adding to existing holding:', error);
+      return {
+        success: false,
+        message: 'Failed to add to existing holding. Please try again.',
+        data: null
+      };
     }
   }
-  
-  private static async executeEditHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
-    try {
-      // Get or create user using shared utility
-      const user = await this.getOrCreateDefaultUser();
 
-      // Find the existing holding by exact symbol
-      const holding = await prisma.holdings.findFirst({
-        where: {
-          symbol: data.symbol
-        }
+  private static async executeEditHolding(data: any): Promise<{ success: boolean; message: string; data?: any; originalData?: any }> {
+    try {
+      const { id, symbol, quantity, unitPrice, category, currency = 'USD', costBasisCurrency = 'USD' } = data;
+      
+      // Round all numeric values to 2 decimal places
+      const roundedQuantity = Math.round(quantity * 100) / 100;
+      const roundedUnitPrice = Math.round(unitPrice * 100) / 100;
+      const roundedCostBasis = Math.round(roundedQuantity * roundedUnitPrice * 100) / 100;
+
+      // Get original data for undo
+      const originalHolding = await prisma.holdings.findUnique({
+        where: { id: id }
       });
 
-      if (!holding) {
-        return { 
-          success: false, 
-          message: `No holding found with symbol ${data.symbol}. Please check the symbol and try again.` 
+      if (!originalHolding) {
+        return {
+          success: false,
+          message: 'Holding not found.',
+          data: null
         };
       }
 
-      // Update the holding with new values
-      const updateData: any = {};
-      
-      // Handle symbol rename
-      if (data.newSymbol && data.newSymbol !== data.symbol) {
-        // Check if new symbol already exists
-        const existingHolding = await prisma.holdings.findFirst({
-          where: {
-            symbol: data.newSymbol,
-            id: { not: holding.id } // Exclude current holding
-          }
-        });
-        
-        if (existingHolding) {
-          return { 
-            success: false, 
-            message: `Symbol ${data.newSymbol} already exists in your portfolio. Please use a different symbol.` 
-          };
-        }
-        
-        updateData.symbol = data.newSymbol;
-      }
-      
-      // Handle company name updates
-      if (data.name !== undefined) {
-        updateData.name = data.name;
-      }
-      
-      // Handle asset type updates
-      if (data.assetType !== undefined) {
-        updateData.assetType = data.assetType;
-      }
-      
-      // Handle category updates
-      if (data.category !== undefined) {
-        // Validate category
-        const validCategories = ['Core', 'Growth', 'Hedge', 'Liquidity'];
-        if (!validCategories.includes(data.category)) {
-          return { 
-            success: false, 
-            message: `Invalid category: ${data.category}. Valid categories are: ${validCategories.join(', ')}` 
-          };
-        }
-        
-        // Find category in database
-        const category = await prisma.assetCategory.findFirst({
-          where: { name: data.category }
-        });
-        
-        if (!category) {
-          return { 
-            success: false, 
-            message: `Category ${data.category} not found in database.` 
-          };
-        }
-        
-        updateData.categoryId = category.id;
-      }
-      
-      // Handle location updates
-      if (data.location !== undefined) {
-        updateData.location = data.location;
-      }
-      
-      // Handle buy price (unitPrice) updates
-      if (data.unitPrice !== undefined) {
-        updateData.unitPrice = data.unitPrice;
-        // Recalculate values based on new unit price
-        const quantity = Number(holding.quantity) || 0;
-        updateData.valueUSD = quantity * data.unitPrice;
-        updateData.valueSGD = quantity * data.unitPrice * 1.35; // Approximate SGD conversion
-        updateData.valueINR = quantity * data.unitPrice * 83; // Approximate INR conversion
-      }
-      
-      // Handle current market price updates
-      if (data.currentUnitPrice !== undefined) {
-        updateData.currentUnitPrice = data.currentUnitPrice;
-        updateData.priceUpdated = new Date();
-        updateData.priceSource = 'manual'; // Since user manually updated
-        
-        // Recalculate stored values to ensure consistency
-        const quantity = Number(holding.quantity) || 0;
-        const totalValue = quantity * data.currentUnitPrice;
-        
-        // Use proper currency conversion based on entry currency
-        if (holding.entryCurrency === 'SGD') {
-          updateData.valueSGD = totalValue;
-          updateData.valueUSD = totalValue / 1.35;
-          updateData.valueINR = totalValue * 83;
-        } else if (holding.entryCurrency === 'USD') {
-          updateData.valueUSD = totalValue;
-          updateData.valueSGD = totalValue * 1.35;
-          updateData.valueINR = totalValue * 83;
-        } else if (holding.entryCurrency === 'INR') {
-          updateData.valueINR = totalValue;
-          updateData.valueSGD = totalValue / 83;
-          updateData.valueUSD = totalValue / 83 / 1.35;
-        }
-      }
-      
-      // Handle quantity updates
-      if (data.quantity !== undefined) {
-        updateData.quantity = data.quantity;
-        // Recalculate values based on new quantity
-        const unitPrice = Number(holding.unitPrice) || 0;
-        updateData.valueUSD = data.quantity * unitPrice;
-        updateData.valueSGD = data.quantity * unitPrice * 1.35;
-        updateData.valueINR = data.quantity * unitPrice * 83;
-      }
-      
-      // Handle manual pricing toggle
-      if (data.manualPricing !== undefined) {
-        updateData._enableAutoPricing = !data.manualPricing;
-      }
+      const user = await this.getOrCreateDefaultUser();
+      const categoryRecord = await this.getOrCreateCategory(category, user.id);
 
-      await prisma.holdings.update({
-        where: { id: holding.id },
-        data: updateData
+      const updatedHolding = await prisma.holdings.update({
+        where: { id: id },
+        data: {
+          symbol: symbol.toUpperCase(),
+          quantity: roundedQuantity,
+          unitPrice: roundedUnitPrice,
+          costBasis: roundedCostBasis,
+          entryCurrency: currency.toUpperCase(),
+          categoryId: categoryRecord.id
+        }
       });
 
-      // Build success message
-      let message = `Successfully updated ${data.newSymbol || holding.symbol}.`;
-      if (data.newSymbol && data.newSymbol !== data.symbol) message += ` Renamed from ${data.symbol} to ${data.newSymbol}`;
-      if (data.name !== undefined) message += ` New name: ${data.name}`;
-      if (data.category !== undefined) message += ` New category: ${data.category}`;
-      if (data.location !== undefined) message += ` New location: ${data.location}`;
-      if (data.unitPrice !== undefined) message += ` New buy price: $${data.unitPrice}`;
-      if (data.currentUnitPrice !== undefined) message += ` New current price: $${data.currentUnitPrice}`;
-      if (data.quantity !== undefined) message += ` New quantity: ${data.quantity}`;
-      if (data.manualPricing !== undefined) message += ` Manual pricing: ${data.manualPricing ? 'enabled' : 'disabled'}`;
-
-      return { 
-        success: true, 
-        message: message.trim()
+      return {
+        success: true,
+        message: `✅ Updated ${symbol.toUpperCase()}: ${roundedQuantity} shares at $${roundedUnitPrice} (${currency.toUpperCase()}) for a total cost of $${roundedCostBasis} (${costBasisCurrency.toUpperCase()})`,
+        data: updatedHolding,
+        originalData: originalHolding
       };
     } catch (error) {
-      console.error('Edit holding error:', error);
-      return { success: false, message: 'Database error while editing holding' };
+      console.error('Error editing holding:', error);
+      return {
+        success: false,
+        message: 'Failed to edit holding. Please try again.',
+        data: null
+      };
     }
   }
-  
-  private static async executeDeleteHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
-    try {
-      // Get or create user using shared utility
-      const user = await this.getOrCreateDefaultUser();
 
-      // Find the existing holding by exact symbol
-      const holding = await prisma.holdings.findFirst({
-        where: {
-          symbol: data.symbol
-        }
+  private static async executeDeleteHolding(data: any): Promise<{ success: boolean; message: string; data?: any; originalData?: any }> {
+    try {
+      const { id } = data;
+      
+      // Get original data for undo
+      const originalHolding = await prisma.holdings.findUnique({
+        where: { id: id },
+        include: { category: true }
       });
 
-      if (!holding) {
-        return { 
-          success: false, 
-          message: `No holding found with symbol ${data.symbol}. Please check the symbol and try again.` 
+      if (!originalHolding) {
+        return {
+          success: false,
+          message: 'Holding not found.',
+          data: null
         };
       }
 
-      // Delete the holding
+      // Round values for display
+      const roundedQuantity = Math.round((Number(originalHolding.quantity) || 0) * 100) / 100;
+      const roundedUnitPrice = Math.round((Number(originalHolding.unitPrice) || 0) * 100) / 100;
+      const roundedCostBasis = Math.round((Number(originalHolding.costBasis) || 0) * 100) / 100;
+
       await prisma.holdings.delete({
-        where: { id: holding.id }
+        where: { id: id }
       });
 
-      return { 
-        success: true, 
-        message: `Successfully deleted ${holding.symbol} (${holding.name}) from your portfolio` 
+      return {
+        success: true,
+        message: `✅ Deleted ${roundedQuantity} shares of ${originalHolding.symbol} at $${roundedUnitPrice} (${originalHolding.entryCurrency}) for a total cost of $${roundedCostBasis} (${originalHolding.entryCurrency})`,
+        data: null,
+        originalData: originalHolding
       };
-      
     } catch (error) {
-      console.error('Delete holding error:', error);
-      return { success: false, message: 'Database error while deleting holding' };
+      console.error('Error deleting holding:', error);
+      return {
+        success: false,
+        message: 'Failed to delete holding. Please try again.',
+        data: null
+      };
     }
   }
 
-  private static async executeReduceHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
+  private static async executeReduceHolding(data: any): Promise<{ success: boolean; message: string; data?: any; originalData?: any }> {
     try {
-      // Get or create user using shared utility
-      const user = await this.getOrCreateDefaultUser();
+      const { symbol, quantity, unitPrice, currency = 'USD' } = data;
+      
+      // Round all numeric values to 2 decimal places
+      const roundedQuantity = Math.round(quantity * 100) / 100;
+      const roundedUnitPrice = Math.round(unitPrice * 100) / 100;
+      const roundedCostBasis = Math.round(roundedQuantity * roundedUnitPrice * 100) / 100;
 
-      // Find the existing holding by exact symbol (LLM should have already found the correct one)
-      const holding = await prisma.holdings.findFirst({
-        where: {
-          symbol: data.symbol
-        }
+      // Find the holding by symbol
+      const existingHolding = await prisma.holdings.findFirst({
+        where: { symbol: symbol.toUpperCase() }
       });
 
-      if (!holding) {
-        return { 
-          success: false, 
-          message: `No holding found with symbol ${data.symbol}. Please check the symbol and try again.` 
+      if (!existingHolding) {
+        return {
+          success: false,
+          message: `Holding ${symbol.toUpperCase()} not found.`,
+          data: null
         };
       }
 
-      const currentQuantity = Number(holding.quantity) || 0;
-      let reduceQuantity = data.quantity;
+      // Store original data for undo
+      const originalData = { ...existingHolding };
 
-      // Handle "half" reduction
-      if (typeof data.quantity === 'string' && data.quantity.toLowerCase() === 'half') {
-        reduceQuantity = Math.floor(currentQuantity / 2);
-      } else if (typeof data.quantity === 'number') {
-        reduceQuantity = data.quantity;
-      } else {
-        return { success: false, message: 'Invalid quantity specified for reduction' };
-      }
+      const currentQuantity = Number(existingHolding.quantity) || 0;
+      const currentCostBasis = Number(existingHolding.costBasis) || 0;
 
-      if (reduceQuantity > currentQuantity) {
-        return { 
-          success: false, 
-          message: `Cannot reduce by ${reduceQuantity} shares. You only have ${currentQuantity} shares of ${holding.symbol}.` 
+      if (currentQuantity < roundedQuantity) {
+        return {
+          success: false,
+          message: `Cannot reduce ${roundedQuantity} shares when you only have ${currentQuantity} shares of ${symbol.toUpperCase()}.`,
+          data: null
         };
       }
 
-      const newQuantity = currentQuantity - reduceQuantity;
-      const reductionValue = reduceQuantity * (data.unitPrice || Number(holding.unitPrice) || 0);
+      const remainingQuantity = Math.round((currentQuantity - roundedQuantity) * 100) / 100;
+      const remainingCostBasis = Math.round((currentCostBasis - roundedCostBasis) * 100) / 100;
 
-      // Update the holding
-      if (newQuantity === 0) {
-        // Delete the holding if quantity becomes 0
+      if (remainingQuantity <= 0) {
+        // Delete the holding if no shares remain
         await prisma.holdings.delete({
-          where: { id: holding.id }
+          where: { id: existingHolding.id }
         });
-        return { 
-          success: true, 
-          message: `Successfully sold all ${currentQuantity} shares of ${holding.symbol} at $${data.unitPrice || holding.unitPrice}` 
+
+        return {
+          success: true,
+          message: `✅ Sold all ${roundedQuantity} shares of ${existingHolding.symbol} at $${roundedUnitPrice} (${currency.toUpperCase()}) for a total of $${roundedCostBasis} (${existingHolding.entryCurrency})`,
+          data: null,
+          originalData
         };
       } else {
-        // Update quantity and values
-        await prisma.holdings.update({
-          where: { id: holding.id },
+        // Calculate new values based on remaining quantity and current unit price
+        const currentUnitPrice = Number(existingHolding.currentUnitPrice) || Number(existingHolding.unitPrice) || 0;
+        const newTotalValue = remainingQuantity * currentUnitPrice;
+        
+        // Use default exchange rates for conversion
+        const defaultRates = {
+          SGD_TO_USD: 0.74,
+          SGD_TO_INR: 63.50,
+          USD_TO_SGD: 1.35,
+          USD_TO_INR: 85.50,
+          INR_TO_SGD: 0.0157,
+          INR_TO_USD: 0.0117
+        };
+        
+        // Convert to all currencies using the proper function
+        const convertedValues = convertToAllCurrencies(
+          newTotalValue, 
+          existingHolding.entryCurrency as CurrencyCode, 
+          defaultRates
+        );
+        
+        // Update the holding with remaining shares and recalculated values
+        const updatedHolding = await prisma.holdings.update({
+          where: { id: existingHolding.id },
           data: {
-            quantity: newQuantity,
-            valueSGD: (Number(holding.valueSGD) || 0) * (newQuantity / currentQuantity),
-            valueUSD: (Number(holding.valueUSD) || 0) * (newQuantity / currentQuantity),
-            valueINR: (Number(holding.valueINR) || 0) * (newQuantity / currentQuantity)
+            quantity: remainingQuantity,
+            costBasis: remainingCostBasis,
+            valueSGD: convertedValues.valueSGD,
+            valueUSD: convertedValues.valueUSD,
+            valueINR: convertedValues.valueINR
           }
         });
-        return { 
-          success: true, 
-          message: `Successfully sold ${reduceQuantity} shares of ${holding.symbol} at $${data.unitPrice || holding.unitPrice}. ${newQuantity} shares remaining.` 
+
+        return {
+          success: true,
+          message: `✅ Sold ${roundedQuantity} shares of ${existingHolding.symbol} at $${roundedUnitPrice} (${currency.toUpperCase()}) for a total of $${roundedCostBasis} (${existingHolding.entryCurrency}). Remaining: ${remainingQuantity} shares`,
+          data: updatedHolding,
+          originalData
         };
       }
     } catch (error) {
-      console.error('Reduce holding error:', error);
-      return { success: false, message: 'Database error while reducing holding' };
+      console.error('Error reducing holding:', error);
+      return {
+        success: false,
+        message: 'Failed to reduce holding. Please try again.',
+        data: null
+      };
     }
   }
 
-  private static async executeIncreaseHolding(data: any): Promise<{ success: boolean; message: string; data?: any }> {
+  private static async executeIncreaseHolding(data: any): Promise<{ success: boolean; message: string; data?: any; originalData?: any }> {
     try {
-      // Get or create user using shared utility
-      const user = await this.getOrCreateDefaultUser();
+      const { id, quantity, unitPrice, currency = 'USD' } = data;
+      
+      // Round all numeric values to 2 decimal places
+      const roundedQuantity = Math.round(quantity * 100) / 100;
+      const roundedUnitPrice = Math.round(unitPrice * 100) / 100;
+      const newCostBasis = Math.round(roundedQuantity * roundedUnitPrice * 100) / 100;
 
-      // Find the existing holding by exact symbol (LLM should have already found the correct one)
-      const holding = await prisma.holdings.findFirst({
-        where: {
-          symbol: data.symbol
-        }
+      const existingHolding = await prisma.holdings.findUnique({
+        where: { id: id }
       });
 
-      if (!holding) {
-        return { 
-          success: false, 
-          message: `No holding found with symbol ${data.symbol}. Please check the symbol and try again.` 
+      if (!existingHolding) {
+        return {
+          success: false,
+          message: 'Holding not found.',
+          data: null
         };
       }
 
-      const currentQuantity = Number(holding.quantity) || 0;
-      const addQuantity = data.quantity;
-      const newQuantity = currentQuantity + addQuantity;
-      const additionValue = addQuantity * data.unitPrice;
+      // Store original data for undo
+      const originalData = { ...existingHolding };
 
-      // Calculate new weighted average price
-      const currentTotalValue = currentQuantity * (Number(holding.unitPrice) || 0);
-      const newTotalValue = currentTotalValue + additionValue;
-      const newAveragePrice = newTotalValue / newQuantity;
+      // Calculate weighted average
+      const existingQuantity = Number(existingHolding.quantity) || 0;
+      const existingCostBasis = Number(existingHolding.costBasis) || 0;
+      const totalQuantity = Math.round((existingQuantity + roundedQuantity) * 100) / 100;
+      const totalCostBasis = Math.round((existingCostBasis + newCostBasis) * 100) / 100;
+      const weightedAveragePrice = Math.round((totalCostBasis / totalQuantity) * 100) / 100;
 
-      // Update the holding
-      await prisma.holdings.update({
-        where: { id: holding.id },
+      const updatedHolding = await prisma.holdings.update({
+        where: { id: id },
         data: {
-          quantity: newQuantity,
-          unitPrice: newAveragePrice,
-          valueSGD: (Number(holding.valueSGD) || 0) + (additionValue * (holding.entryCurrency === 'USD' ? 1.35 : 1)),
-          valueUSD: (Number(holding.valueUSD) || 0) + (additionValue * (holding.entryCurrency === 'USD' ? 1 : 1/1.35)),
-          valueINR: (Number(holding.valueINR) || 0) + (additionValue * (holding.entryCurrency === 'INR' ? 1 : 63.5))
+          quantity: totalQuantity,
+          unitPrice: weightedAveragePrice,
+          costBasis: totalCostBasis
         }
       });
 
-      return { 
-        success: true, 
-        message: `Successfully added ${addQuantity} shares of ${holding.symbol} at $${data.unitPrice}. New average price: $${newAveragePrice.toFixed(2)}. Total shares: ${newQuantity}.` 
+      return {
+        success: true,
+        message: `✅ Added ${roundedQuantity} shares of ${existingHolding.symbol} at $${roundedUnitPrice} (${currency.toUpperCase()}). New weighted average price: $${weightedAveragePrice} (${existingHolding.entryCurrency}). Total shares: ${totalQuantity}`,
+        data: updatedHolding,
+        originalData
       };
     } catch (error) {
-      console.error('Increase holding error:', error);
-      return { success: false, message: 'Database error while increasing holding' };
+      console.error('Error increasing holding:', error);
+      return {
+        success: false,
+        message: 'Failed to increase holding. Please try again.',
+        data: null
+      };
     }
   }
-  
-  private static async executeAddYearlyData(data: any): Promise<{ success: boolean; message: string; data?: any }> {
+
+  private static async executeAddYearlyData(data: any): Promise<{ success: boolean; message: string; data?: any; originalData?: any }> {
     try {
-      // Get or create user (for testing - using default user)
-      let user = await prisma.user.findFirst({
-        where: { id: 'default-user' }
-      });
+      const { year, netWorth, savings, srs, notes } = data;
       
-      if (!user) {
-        user = await prisma.user.create({
-          data: {
-            id: 'default-user',
-            email: 'default@example.com',
-            name: 'Default User'
-          }
-        });
-      }
-      
-      // Check if yearly data already exists for this year
+      // Round all numeric values to 2 decimal places
+      const roundedNetWorth = Math.round(netWorth * 100) / 100;
+      const roundedSavings = Math.round(savings * 100) / 100;
+      const roundedSrs = Math.round(srs * 100) / 100;
+
+      const user = await this.getOrCreateDefaultUser();
+
+      // Check if yearly data already exists
       const existingData = await prisma.yearlyData.findFirst({
         where: {
-          userId: user.id,
-          year: data.year
+          year: parseInt(year),
+          userId: user.id
         }
       });
-      
+
       if (existingData) {
-        // Update existing data
-        await prisma.yearlyData.update({
+        // Store original data for undo
+        const originalData = { ...existingData };
+
+        const updatedData = await prisma.yearlyData.update({
           where: { id: existingData.id },
           data: {
-            netWorth: data.netWorth || existingData.netWorth,
-            income: data.income || existingData.income,
-            expenses: data.expenses || existingData.expenses,
-            savings: data.savings || existingData.savings,
-            marketGains: data.marketGains || existingData.marketGains
+            netWorth: roundedNetWorth,
+            savings: roundedSavings,
+            srs: roundedSrs,
+            notes: notes || ''
           }
         });
+
+        return {
+          success: true,
+          message: `✅ Updated ${year} data: Net Worth $${roundedNetWorth.toLocaleString()}, Savings $${roundedSavings.toLocaleString()}, SRS $${roundedSrs.toLocaleString()}`,
+          data: updatedData,
+          originalData
+        };
       } else {
-        // Create new data
-        await prisma.yearlyData.create({
+        const newData = await prisma.yearlyData.create({
           data: {
-            userId: user.id,
-            year: data.year,
-            netWorth: data.netWorth || 0,
-            income: data.income || 0,
-            expenses: data.expenses || 0,
-            savings: data.savings || 0,
-            marketGains: data.marketGains || 0
+            year: parseInt(year),
+            netWorth: roundedNetWorth,
+            savings: roundedSavings,
+            srs: roundedSrs,
+            notes: notes || '',
+            userId: user.id
           }
         });
+
+        return {
+          success: true,
+          message: `✅ Added ${year} data: Net Worth $${roundedNetWorth.toLocaleString()}, Savings $${roundedSavings.toLocaleString()}, SRS $${roundedSrs.toLocaleString()}`,
+          data: newData,
+          originalData: null
+        };
       }
-      
-      return { 
-        success: true, 
-        message: `Successfully added data for ${data.year}` 
-      };
-      
     } catch (error) {
-      console.error('Add yearly data error:', error);
-      return { success: false, message: 'Database error while adding yearly data' };
+      console.error('Error adding yearly data:', error);
+      return {
+        success: false,
+        message: 'Failed to add yearly data. Please try again.',
+        data: null
+      };
     }
   }
   
@@ -796,26 +798,59 @@ export class PortfolioAgent {
     return companyNames[symbol] || `${symbol} Corporation`;
   }
 
+  private static handleSimpleConfirmation(message: string): AgentResponse | null {
+    const normalizedMessage = message.toLowerCase().trim();
+    
+    // Check for positive confirmations
+    if (['yes', 'y', 'ok', 'okay', 'sure', 'confirm', 'proceed', 'go ahead', 'do it'].includes(normalizedMessage)) {
+      return {
+        action: 'execute',
+        data: {
+          intent: 'confirm_action',
+          entities: { confirmed: true }
+        },
+        message: 'Proceeding with the action...',
+        confidence: 1.0,
+        suggestions: [],
+        requires_confirmation: false
+      };
+    }
+    
+    // Check for negative confirmations
+    if (['no', 'n', 'cancel', 'stop', 'don\'t', 'dont'].includes(normalizedMessage)) {
+      return {
+        action: 'clarify',
+        data: {
+          intent: 'cancel_action',
+          entities: { confirmed: false }
+        },
+        message: 'Action cancelled. How else can I help you?',
+        confidence: 1.0,
+        suggestions: ['Show portfolio summary', 'Add a new holding', 'Show my biggest holding'],
+        requires_confirmation: false
+      };
+    }
+    
+    return null;
+  }
+
   private static getContextAwareSuggestions(quickQueryType: string | undefined): string[] {
-    const allSuggestions = [
-      'Show my portfolio summary',
-      'What\'s my biggest holding?',
-      'Show allocation gaps'
+    // Focus on 80/20 - most useful actions only
+    const coreSuggestions = [
+      'Add a new holding',
+      'Show portfolio summary',
+      'Show my biggest holding'
     ];
 
-    // If we just showed a specific type, don't suggest it again
+    // Add context-specific suggestions
     if (quickQueryType === 'portfolio_summary') {
-      return allSuggestions.filter(s => !s.includes('portfolio summary'));
-    } else if (quickQueryType === 'biggest_holding') {
-      return allSuggestions.filter(s => !s.includes('biggest holding'));
-    } else if (quickQueryType === 'allocation_gaps') {
-      return allSuggestions.filter(s => !s.includes('allocation gaps'));
-    } else if (quickQueryType === 'total_value') {
-      return allSuggestions.filter(s => !s.includes('portfolio summary'));
+      return [
+        'Add a new holding',
+        'Show my biggest holding'
+      ];
     }
 
-    // Default: show all suggestions
-    return allSuggestions;
+    return coreSuggestions;
   }
 
   // Shared utility function to get or create default user
@@ -857,5 +892,134 @@ export class PortfolioAgent {
     }
     
     return category;
+  }
+
+  private static async executeUndoAction(data: any): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      const { originalAction, originalEntities } = data;
+      const { originalData } = originalEntities;
+
+      switch (originalAction) {
+        case 'add_holding':
+          // Delete the newly created holding
+          if (originalData && originalData.id) {
+            await prisma.holdings.delete({
+              where: { id: originalData.id }
+            });
+            return {
+              success: true,
+              message: `✅ Undone: Deleted ${originalData.symbol} holding`,
+              data: null
+            };
+          }
+          break;
+
+        case 'add_to_existing_holding':
+        case 'increase_holding':
+          // Restore original quantity and cost basis
+          if (originalData && originalData.id) {
+            await prisma.holdings.update({
+              where: { id: originalData.id },
+              data: {
+                quantity: Math.round(originalData.quantity * 100) / 100,
+                unitPrice: Math.round(originalData.unitPrice * 100) / 100,
+                costBasis: Math.round(originalData.costBasis * 100) / 100
+              }
+            });
+            return {
+              success: true,
+              message: `✅ Undone: Restored ${originalData.symbol} to original state`,
+              data: null
+            };
+          }
+          break;
+
+        case 'edit_holding':
+          // Restore original values
+          if (originalData && originalData.id) {
+            await prisma.holdings.update({
+              where: { id: originalData.id },
+              data: {
+                symbol: originalData.symbol,
+                quantity: Math.round((originalData.quantity || 0) * 100) / 100,
+                unitPrice: Math.round((originalData.unitPrice || 0) * 100) / 100,
+                costBasis: Math.round((originalData.costBasis || 0) * 100) / 100,
+                entryCurrency: originalData.entryCurrency,
+                categoryId: originalData.categoryId
+              }
+            });
+            return {
+              success: true,
+              message: `✅ Undone: Restored ${originalData.symbol} to original state`,
+              data: null
+            };
+          }
+          break;
+
+        case 'delete_holding':
+          // Recreate the deleted holding
+          if (originalData) {
+            const user = await this.getOrCreateDefaultUser();
+            const categoryRecord = await this.getOrCreateCategory(originalData.category.name, user.id);
+            
+            await prisma.holdings.create({
+              data: {
+                symbol: originalData.symbol,
+                name: originalData.name,
+                quantity: Math.round((originalData.quantity || 0) * 100) / 100,
+                unitPrice: Math.round((originalData.unitPrice || 0) * 100) / 100,
+                costBasis: Math.round((originalData.costBasis || 0) * 100) / 100,
+                entryCurrency: originalData.entryCurrency,
+                categoryId: categoryRecord.id,
+                userId: user.id,
+                valueSGD: Number(originalData.valueSGD) || 0,
+                valueUSD: Number(originalData.valueUSD) || 0,
+                valueINR: Number(originalData.valueINR) || 0,
+                location: originalData.location || 'IBKR'
+              }
+            });
+            return {
+              success: true,
+              message: `✅ Undone: Restored ${originalData.symbol} holding`,
+              data: null
+            };
+          }
+          break;
+
+        case 'add_yearly_data':
+          // Delete the yearly data
+          if (originalData && originalData.id) {
+            await prisma.yearlyData.delete({
+              where: { id: originalData.id }
+            });
+            return {
+              success: true,
+              message: `✅ Undone: Deleted ${originalData.year} data`,
+              data: null
+            };
+          }
+          break;
+
+        default:
+          return {
+            success: false,
+            message: 'Cannot undo this action.',
+            data: null
+          };
+      }
+
+      return {
+        success: false,
+        message: 'Failed to undo action.',
+        data: null
+      };
+    } catch (error) {
+      console.error('Error undoing action:', error);
+      return {
+        success: false,
+        message: 'Failed to undo action. Please try again.',
+        data: null
+      };
+    }
   }
 } 

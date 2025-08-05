@@ -5,10 +5,11 @@ import React, { useState, useCallback, useEffect } from 'react';
 import NetWorthTracker from './NetWorthTracker';
 import FixedPortfolioGrid from './FixedPortfolioGrid';
 import PortfolioStatusMetrics from './PortfolioStatusMetrics';
-import TaxIntelligenceDisplay from './TaxIntelligenceDisplay';
-import InsightsSection from './InsightsSection';
+
 import { CurrencyToggleSimple } from './CurrencyToggle';
 import FinancialSetupButton from './FinancialSetupButton';
+import NumberVisibilityToggle from './ui/NumberVisibilityToggle';
+
 import { type CurrencyCode } from '@/app/lib/currency';
 import { type Intelligence } from '@/app/lib/types/shared';
 import { usePortfolioData } from '@/app/hooks/usePortfolioData';
@@ -21,6 +22,8 @@ import { DEFAULT_ALLOCATION_TARGETS } from '@/app/lib/constants';
 import AgentChat from './AgentChat';
 import SignalMode from './SignalMode';
 import { AgentContext } from '@/app/lib/agent/types';
+import { PortfolioSkeleton } from './ui/PortfolioSkeleton';
+import ContextualInsights from './ContextualInsights';
 
 // Live indicator component
 const LiveIndicator = () => (
@@ -40,6 +43,9 @@ export default function PortfolioDashboard() {
   const [allocationTargets, setAllocationTargets] = useState(DEFAULT_TARGETS);
   const [showChartView, setShowChartView] = useState(false);
   const [yearlyData, setYearlyData] = useState<any[]>([]); // State for yearly data
+  const [yearlyDataLoading, setYearlyDataLoading] = useState(true);
+  const [monthlySnapshots, setMonthlySnapshots] = useState<any[]>([]); // State for monthly snapshots
+  const [monthlyDataLoading, setMonthlyDataLoading] = useState(true);
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [usdToSgd, setUsdToSgd] = useState(1.35);
@@ -51,7 +57,6 @@ export default function PortfolioDashboard() {
     loading,
     dynamicInsights,
     intelligence,
-    taxIntelligence,
     isInsightsLive,
     isIntelligenceLive,
     insightsLoading,
@@ -63,6 +68,7 @@ export default function PortfolioDashboard() {
 
   // Function to load yearly data
   const loadYearlyData = async () => {
+    setYearlyDataLoading(true);
     try {
       const response = await fetch('/api/yearly-data');
       if (response.ok) {
@@ -73,6 +79,26 @@ export default function PortfolioDashboard() {
       }
     } catch (error) {
       console.error('Failed to load yearly data:', error);
+    } finally {
+      setYearlyDataLoading(false);
+    }
+  };
+
+  // Function to load monthly snapshots
+  const loadMonthlySnapshots = async () => {
+    setMonthlyDataLoading(true);
+    try {
+      const response = await fetch('/api/monthly-snapshot');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setMonthlySnapshots(data.data);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load monthly snapshots:', error);
+    } finally {
+      setMonthlyDataLoading(false);
     }
   };
 
@@ -99,17 +125,16 @@ export default function PortfolioDashboard() {
 
   // Centralized refresh function
   const refreshAllData = () => {
-    fetchHoldings();
-    fetchDynamicInsights();
     loadAllocationTargets();
     loadYearlyData();
+    loadMonthlySnapshots();
   };
 
   // Load all data on initial mount
   useEffect(() => {
-    fetchHoldings();
     loadAllocationTargets();
     loadYearlyData();
+    loadMonthlySnapshots();
   }, []);
 
   useEffect(() => {
@@ -135,11 +160,11 @@ export default function PortfolioDashboard() {
     INR_TO_USD: 1 / (usdToSgd * 63.0)
   } : null;
   
-  const { totalValue } = calculatePortfolioValue(holdings, displayCurrency, exchangeRates);
+  const { totalValue } = calculatePortfolioValue(holdings as any, displayCurrency, exchangeRates);
 
   // Category Processing - handles portfolio categorization with user targets
   const enhancedCategoryData = usePortfolioCategoryProcessor({
-    holdings,
+    holdings: holdings as any,
     totalValue: totalValue, // Use the calculated totalValue
     displayCurrency,
     intelligence: intelligence || undefined,
@@ -150,7 +175,7 @@ export default function PortfolioDashboard() {
   const { actionItems } = useActionItemsProcessor({
     dynamicInsights,
     intelligence: intelligence || undefined,
-    holdings
+    holdings: holdings as any
   });
 
   // UI Event Handlers
@@ -182,7 +207,8 @@ export default function PortfolioDashboard() {
       console.error('❌ Failed to save allocation targets:', error);
     }
     
-    fetchHoldings(); // Refresh to use new targets
+    // No need to refresh - the state is already updated
+    // The allocation targets are used locally, so no page refresh needed
   };
 
   // Enhanced portfolio update handler with loading states and scroll management
@@ -193,6 +219,8 @@ export default function PortfolioDashboard() {
     try {
       // Add a small delay to ensure database transaction is committed
       await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Re-fetch holdings data instead of full page refresh
       await fetchHoldings();
       
       // Show success message
@@ -234,11 +262,7 @@ export default function PortfolioDashboard() {
 
   // Loading State
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <div className="text-xl">Loading your portfolio...</div>
-      </div>
-    );
+    return <PortfolioSkeleton />;
   }
 
   // Empty State
@@ -268,35 +292,27 @@ export default function PortfolioDashboard() {
       {/* Mobile-optimized header */}
       <div className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-xl border-b border-gray-800/50">
         <div className="max-w-6xl mx-auto px-4 py-3">
-          {/* Header Row 1: Title and Live Status */}
-          <div className="flex items-center justify-between mb-3">
+          {/* Header Row: Title, Currency Toggle, and Action Buttons */}
+          <div className="flex items-center justify-between">
             <h1 className="text-xl font-semibold text-white tracking-tight">Action Bias</h1>
-            {(isInsightsLive || isIntelligenceLive) && (
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-xs text-green-400 font-medium">Live</span>
-              </div>
-            )}
-          </div>
-          
-          {/* Header Row 2: Action Buttons - Mobile Optimized */}
-          <div className="flex items-center justify-between gap-2">
-            {/* Left: Currency Toggle - Compact */}
-            <div className="flex-shrink-0">
+            
+            {/* Right side: Currency Toggle and Action Buttons */}
+            <div className="flex items-center gap-2">
               <CurrencyToggleSimple 
                 displayCurrency={displayCurrency}
                 onCurrencyChange={setDisplayCurrency}
               />
-            </div>
-            
-            {/* Right: Action Buttons - Consistent Sizing */}
-            <div className="flex items-center gap-2">
+              
               <button
-                onClick={() => setUsbMode(true)}
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-3 py-2.5 rounded-xl font-medium shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-1.5 text-sm min-w-[44px] min-h-[44px]"
+                onClick={() => setUsbMode(!usbMode)}
+                className={`bg-transparent border-2 border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-1.5 min-w-[44px] min-h-[44px] ${
+                  usbMode ? 'bg-blue-600 text-white' : ''
+                }`}
               >
-                <span className="text-base">🎯</span>
-                <span className="hidden xs:inline">Signal</span>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
+                </svg>
+                <span className="hidden xs:inline">{usbMode ? 'Signal On' : 'Signal'}</span>
               </button>
               
               <FinancialSetupButton 
@@ -304,23 +320,34 @@ export default function PortfolioDashboard() {
                 portfolioTotal={totalValue}
                 allocationTargets={allocationTargets}
               />
+              
+              <NumberVisibilityToggle size="sm" />
             </div>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-6xl mx-auto px-4 py-4 sm:pt-4 pt-20">
+      <div className="max-w-6xl mx-auto px-4 py-1 sm:pt-1 pt-12">
         {/* Portfolio Status Metrics - Extracted Component */}
         <PortfolioStatusMetrics
           totalValue={totalValue}
           displayCurrency={displayCurrency}
           intelligence={intelligence || undefined}
-          isLive={isInsightsLive || isIntelligenceLive}
+          exchangeRates={exchangeRates}
+          loading={yearlyDataLoading}
+          monthlySnapshots={monthlySnapshots}
         />
 
         {/* Net Worth Tracker */}
-        <NetWorthTracker yearlyData={yearlyData} portfolioTotal={totalValue} />
+        <NetWorthTracker 
+          yearlyData={yearlyData} 
+          monthlySnapshots={monthlySnapshots}
+          portfolioTotal={totalValue}
+          displayCurrency={displayCurrency}
+          exchangeRates={exchangeRates}
+          loading={yearlyDataLoading || monthlyDataLoading}
+        />
 
         {/* Portfolio Allocation with Fixed Portfolio Grid */}
         <div className="mb-6">
@@ -330,10 +357,8 @@ export default function PortfolioDashboard() {
             </h2>
             <button
               onClick={handleRefreshPrices}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl font-medium text-sm transition-all duration-200 ${
-                refreshingPrices 
-                  ? 'bg-gray-700 text-gray-300' 
-                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md'
+              className={`flex items-center gap-2 bg-transparent border-2 border-blue-500 text-blue-500 hover:bg-blue-500 hover:text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 hover:transform hover:-translate-y-0.5 hover:shadow-md ${
+                refreshingPrices ? 'opacity-50 cursor-not-allowed' : ''
               }`}
               disabled={refreshingPrices}
             >
@@ -361,6 +386,8 @@ export default function PortfolioDashboard() {
           <AppleRadialAllocation 
             categories={enhancedCategoryData}
             className="mb-6"
+            displayCurrency={displayCurrency}
+            exchangeRates={exchangeRates}
           />
           
           <FixedPortfolioGrid
@@ -371,23 +398,16 @@ export default function PortfolioDashboard() {
             displayCurrency={displayCurrency}
             onHoldingsUpdate={handlePortfolioUpdate}
           />
+          
+          {/* Contextual Insights for Portfolio Section */}
+          <ContextualInsights
+            actionItems={actionItems}
+            currentSection="portfolio"
+            onAction={handleInsightAction}
+          />
         </div>
 
-        {/* AI Insights Section - Extracted Component */}
-        <InsightsSection
-          actionItems={actionItems}
-          isLive={isInsightsLive}
-          isLoading={insightsLoading}
-          error={insightsError}
-          onRefresh={fetchDynamicInsights}
-          onAction={handleInsightAction}
-        />
 
-        {/* Tax Intelligence Display - Extracted Component */}
-        <TaxIntelligenceDisplay
-          taxIntelligence={taxIntelligence || undefined}
-          isLoading={insightsLoading}
-        />
       </div>
       
       {/* Agent Chat */}
@@ -399,11 +419,12 @@ export default function PortfolioDashboard() {
           displayCurrency: displayCurrency
         }}
         onPortfolioUpdate={handlePortfolioUpdate}
+        insights={actionItems}
       />
 
       {/* Signal Mode */}
       <SignalMode
-        holdings={holdings}
+        holdings={holdings as any}
         displayCurrency={displayCurrency}
         exchangeRates={exchangeRates}
         isEnabled={usbMode}

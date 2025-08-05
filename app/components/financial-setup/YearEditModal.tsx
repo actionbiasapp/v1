@@ -120,8 +120,8 @@ export function YearEditModal({
               </label>
               <input
                 type="number"
-                name="srsContributions"
-                value={formData.srsContributions}
+                name="srs"
+                value={formData.srs}
                 onChange={handleChange}
                 className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:outline-none focus:border-indigo-500"
                 min="0"

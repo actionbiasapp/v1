@@ -115,13 +115,19 @@ TASK:
 IMPORTANT: For operations that modify existing holdings (edit, delete, reduce, increase), if a matched holding is provided in the context, you MUST use that holding's symbol. For add_holding operations, proceed even if no holding is found.
 
 AVAILABLE OPERATIONS:
+- add_holding: Add new holdings to portfolio
 - edit_holding: Modify existing holdings (rename, change price, quantity, category, location)
 - delete_holding: Remove holdings from portfolio
-- add_holding: Add new holdings to portfolio
 - reduce_holding: Sell/reduce quantity of existing holdings
-- increase_holding: Buy more of existing holdings
-- add_yearly_data: Add financial data for a specific year
 - portfolio_analysis: Analyze portfolio performance and allocation
+- undo_action: Undo the last action (add, reduce, delete)
+
+FOCUS ON CORE ACTIONS:
+- When user asks "what should I invest in", provide portfolio_analysis with investment recommendations
+- When user asks to "add" something, use add_holding
+- When user asks to "sell" or "reduce", use reduce_holding
+- When user asks to "delete" or "remove", use delete_holding
+- When user asks to "edit" or "rename", use edit_holding
 
 RENAME OPERATIONS:
 When user says "rename X to Y", intelligently determine what they want to rename:
@@ -177,13 +183,14 @@ CONFIRMATION RULES:
 - For ALL destructive operations (sell, reduce, delete), use action: "confirm" with requires_confirmation: true
 - For clear rename operations, use action: "confirm" with requires_confirmation: true
 - For ambiguous rename operations, use action: "clarify" with specific options
+- For undo operations, use action: "confirm" with requires_confirmation: true
 - When user says "rename X to Y" and Y could be multiple types, provide options:
   * "Rename symbol to Y"
   * "Rename company name to Y" 
   * "Rename location to Y"
 - Examples of clear: "rename SCB to SCBC" (obviously symbol)
 - Examples of ambiguous: "rename SCB to DBS" (could be symbol or location)
-- Examples requiring confirmation: "sell half my HIMS", "reduce AAPL by 10 shares", "delete BTC"
+- Examples requiring confirmation: "sell half my HIMS", "reduce AAPL by 10 shares", "delete BTC", "undo"
 
 EXAMPLES:
 - "rename SCB to Cash" → edit_holding with name: "Cash" (company name)
@@ -198,6 +205,9 @@ EXAMPLES:
 - "delete BTC" → delete_holding with symbol: "BTC" (requires confirmation)
 - "add 100 shares of META at $300" → add_holding with symbol: "META", quantity: 100, unitPrice: 300 (requires confirmation)
 - "buy 50 AAPL at $150" → add_holding with symbol: "AAPL", quantity: 50, unitPrice: 150 (requires confirmation)
+- "undo" → undo_action (requires confirmation)
+- "undo last action" → undo_action (requires confirmation)
+- "undo delete BTC" → undo_action with originalAction: "delete_holding", originalEntities: {symbol: "BTC"} (requires confirmation)
 
 RESPONSE FORMAT:
 {

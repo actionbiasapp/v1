@@ -1,319 +1,223 @@
 import { Holding } from "./types/shared.js";
 // app/lib/aiInsights.ts - Portfolio Analysis Engine
 import { type CurrencyCode } from './currency';
+import { DEFAULT_ALLOCATION_TARGETS } from './constants';
 
+// Use the constants for allocation targets
+const ALLOCATION_TARGETS = DEFAULT_ALLOCATION_TARGETS;
 
-interface CategoryAnalysis {
-  name: string;
-  holdings: Holding[];
-  currentValue: number;
-  currentPercent: number;
-  targetPercent: number;
-  gap: number;
-  gapAmount: number;
-  status: 'perfect' | 'underweight' | 'overweight';
-  priority: number;
-}
-
-interface PortfolioInsight {
-  id: string;
-  type: 'urgent' | 'opportunity' | 'optimization';
-  category: string;
-  title: string;
-  problem: string;
-  solution: string;
-  benefit: string;
-  dollarImpact: number;
-  timeline: string;
-  actionText: string;
-  priority: number;
-  isClickable: boolean;
-  metadata?: any;
-}
-
-export type { PortfolioInsight };
-
-// Portfolio allocation targets
-const ALLOCATION_TARGETS = {
-  Core: 25,
-  Growth: 55,
-  Hedge: 10,
-  Liquidity: 10
+// Helper function to round to 2 decimal places
+const roundToTwoDecimals = (value: number): number => {
+  return Math.round(value * 100) / 100;
 };
 
-export function analyzePortfolioAllocation(
-  holdings: Holding[],
-  displayCurrency: CurrencyCode = 'SGD'
-): CategoryAnalysis[] {
-  const totalValue = holdings.reduce((sum, h) => sum + h.valueSGD, 0);
+// Helper function to convert currency with 2 decimal places
+const convertCurrency = (amount: number, fromCurrency: string, toCurrency: string): number => {
+  // Approximate conversion rates
+  const rates = {
+    'USD_TO_SGD': 1.35,
+    'INR_TO_SGD': 1/63,
+    'SGD_TO_USD': 1/1.35,
+    'SGD_TO_INR': 63
+  };
+
+  if (fromCurrency === toCurrency) return roundToTwoDecimals(amount);
   
-  return Object.entries(ALLOCATION_TARGETS).map(([categoryName, targetPercent]) => {
-    const categoryHoldings = holdings.filter(h => h.category === categoryName);
-    const currentValue = categoryHoldings.reduce((sum, h) => sum + h.valueSGD, 0);
-    const currentPercent = totalValue > 0 ? (currentValue / totalValue) * 100 : 0;
-    const gap = currentPercent - targetPercent;
-    const targetValue = (targetPercent / 100) * totalValue;
-    const gapAmount = currentValue - targetValue;
+  if (fromCurrency === 'USD' && toCurrency === 'SGD') {
+    return roundToTwoDecimals(amount * rates.USD_TO_SGD);
+  }
+  if (fromCurrency === 'INR' && toCurrency === 'SGD') {
+    return roundToTwoDecimals(amount * rates.INR_TO_SGD);
+  }
+  if (fromCurrency === 'SGD' && toCurrency === 'USD') {
+    return roundToTwoDecimals(amount * rates.SGD_TO_USD);
+  }
+  if (fromCurrency === 'SGD' && toCurrency === 'INR') {
+    return roundToTwoDecimals(amount * rates.SGD_TO_INR);
+  }
+  
+  return roundToTwoDecimals(amount); // Default to original amount
+};
+
+export const generatePerformanceInsights = (holdings: any[]): any[] => {
+  const insights = [];
+  
+  for (const holding of holdings) {
+    if (!holding.quantity || !holding.unitPrice) continue;
     
-    let status: 'perfect' | 'underweight' | 'overweight';
-    let priority: number;
-    
-    if (Math.abs(gap) <= 2) {
-      status = 'perfect';
-      priority = 1;
-    } else if (gap < -2) {
-      status = 'underweight';
-      priority = Math.abs(gap) > 10 ? 8 : 6;
-    } else {
-      status = 'overweight';
-      priority = gap > 10 ? 9 : 7;
+    // Convert cost basis to SGD for consistent comparison
+    let costBasisSGD = holding.costBasis;
+    if (holding.costBasisCurrency && holding.costBasisCurrency !== 'SGD') {
+      costBasisSGD = convertCurrency(holding.costBasis, holding.costBasisCurrency, 'SGD');
     }
-
-    return {
-      name: categoryName,
-      holdings: categoryHoldings,
-      currentValue,
-      currentPercent,
-      targetPercent,
-      gap,
-      gapAmount,
-      status,
-      priority
-    };
-  });
-}
-
-export function generateCashDragInsights(
-  categories: CategoryAnalysis[],
-  totalValue: number
-): PortfolioInsight[] {
-  const insights: PortfolioInsight[] = [];
+    
+    // Calculate current value (assuming current price is same as unit price for now)
+    const currentValue = roundToTwoDecimals(Number(holding.quantity) * Number(holding.unitPrice));
+    const currentValueSGD = convertCurrency(currentValue, holding.currency || 'USD', 'SGD');
+    
+    // Calculate performance
+    const performance = roundToTwoDecimals(((currentValueSGD - costBasisSGD) / costBasisSGD) * 100);
+    
+    if (Math.abs(performance) > 5) { // Only show significant performance
+      insights.push({
+        type: 'performance',
+        title: `${holding.symbol} Performance Review`,
+        description: `${holding.symbol} is ${performance > 0 ? 'up' : 'down'} ${Math.abs(performance).toFixed(0)}%`,
+        severity: performance > 0 ? 'positive' : 'negative',
+        action: performance > 0 ? 'Consider taking profits' : 'Review position',
+        symbol: holding.symbol,
+        performance: performance
+      });
+    }
+  }
   
-  const liquidityCategory = categories.find(c => c.name === 'Liquidity');
-  if (liquidityCategory && liquidityCategory.gap > 2) {
-    const excessCash = Math.abs(liquidityCategory.gapAmount);
-    const annualOpportunityCost = excessCash * 0.07; // 7% expected return
-    const monthlyOpportunityCost = annualOpportunityCost / 12;
+  return insights;
+};
+
+export const generateAllocationInsights = (holdings: any[]): any[] => {
+  const insights: any[] = [];
+  const categoryTotals: { [key: string]: number } = {};
+  let totalValue = 0;
+  
+  // Calculate total value and category totals
+  for (const holding of holdings) {
+    if (!holding.quantity || !holding.unitPrice) continue;
     
-    // Find underweight categories for redeployment
-    const underweightCategories = categories.filter(c => c.status === 'underweight');
-    const redeploymentTarget = underweightCategories.length > 0 
-      ? underweightCategories[0].name 
-      : 'Growth';
+    const value = roundToTwoDecimals(Number(holding.quantity) * Number(holding.unitPrice));
+    const valueSGD = convertCurrency(value, holding.currency || 'USD', 'SGD');
     
+    const category = holding.category?.name || 'Unknown';
+    categoryTotals[category] = (categoryTotals[category] || 0) + valueSGD;
+    totalValue += valueSGD;
+  }
+  
+  if (totalValue === 0) return insights;
+  
+  // Compare with targets
+  for (const [category, value] of Object.entries(categoryTotals)) {
+    const target = (ALLOCATION_TARGETS as any)[category] || 0;
+    const currentPercentage = roundToTwoDecimals((value / totalValue) * 100);
+    const targetPercentage = target;
+    const gap = roundToTwoDecimals(currentPercentage - targetPercentage);
+    
+    if (Math.abs(gap) > 5) { // Only show significant gaps
+      insights.push({
+        type: 'allocation',
+        title: `${category} Allocation`,
+        description: `${category} is ${gap > 0 ? 'overweight' : 'underweight'} by ${Math.abs(gap).toFixed(0)}%`,
+        severity: Math.abs(gap) > 10 ? 'high' : 'medium',
+        action: gap > 0 ? 'Consider rebalancing' : 'Consider adding to this category',
+        category: category,
+        currentPercentage: currentPercentage,
+        targetPercentage: targetPercentage,
+        gap: gap
+      });
+    }
+  }
+  
+  return insights;
+};
+
+export const generateConcentrationInsights = (holdings: any[]): any[] => {
+  const insights: any[] = [];
+  let totalValue = 0;
+  const holdingValues: { symbol: string; value: number; percentage: number }[] = [];
+  
+  // Calculate total value and individual holding values
+  for (const holding of holdings) {
+    if (!holding.quantity || !holding.unitPrice) continue;
+    
+    const value = roundToTwoDecimals(Number(holding.quantity) * Number(holding.unitPrice));
+    const valueSGD = convertCurrency(value, holding.currency || 'USD', 'SGD');
+    
+    totalValue += valueSGD;
+    holdingValues.push({
+      symbol: holding.symbol,
+      value: valueSGD,
+      percentage: 0 // Will calculate below
+    });
+  }
+  
+  if (totalValue === 0) return insights;
+  
+  // Calculate percentages and find concentrated positions
+  for (const holding of holdingValues) {
+    holding.percentage = roundToTwoDecimals((holding.value / totalValue) * 100);
+    
+    if (holding.percentage > 20) { // More than 20% in single holding
+      insights.push({
+        type: 'concentration',
+        title: `${holding.symbol} Concentration Risk`,
+        description: `${holding.symbol} represents ${holding.percentage.toFixed(0)}% of your portfolio`,
+        severity: holding.percentage > 30 ? 'high' : 'medium',
+        action: 'Consider diversifying this position',
+        symbol: holding.symbol,
+        percentage: holding.percentage
+      });
+    }
+  }
+  
+  return insights;
+};
+
+export const generateCashDragInsights = (holdings: any[]): any[] => {
+  const insights: any[] = [];
+  let totalValue = 0;
+  let cashValue = 0;
+  
+  // Calculate total value and cash value
+  for (const holding of holdings) {
+    if (!holding.quantity || !holding.unitPrice) continue;
+    
+    const value = roundToTwoDecimals(Number(holding.quantity) * Number(holding.unitPrice));
+    const valueSGD = convertCurrency(value, holding.currency || 'USD', 'SGD');
+    
+    totalValue += valueSGD;
+    
+    // Identify cash holdings (typically have unit price of 1)
+    if (Number(holding.unitPrice) === 1 || holding.assetType === 'cash') {
+      cashValue += valueSGD;
+    }
+  }
+  
+  if (totalValue === 0) return insights;
+  
+  const cashPercentage = roundToTwoDecimals((cashValue / totalValue) * 100);
+  
+  if (cashPercentage > 10) { // More than 10% in cash
     insights.push({
-      id: 'cash-drag-analysis',
-      type: 'opportunity',
-      category: 'allocation',
-      title: 'Excess Cash Drag',
-      problem: `${(excessCash/1000).toFixed(0)}k excess cash earning minimal returns`,
-      solution: `Redeploy ${(excessCash/1000).toFixed(0)}k to ${redeploymentTarget} category`,
-      benefit: `Earn ${(annualOpportunityCost/1000).toFixed(0)}k additional annual returns`,
-      dollarImpact: annualOpportunityCost,
-      timeline: 'Execute this week',
-      actionText: `Deploy ${(excessCash/1000).toFixed(0)}k Cash`,
-      priority: 9,
-      isClickable: true,
-      metadata: {
-        excessAmount: excessCash,
-        targetCategory: redeploymentTarget,
-        monthlyOpportunityCost: monthlyOpportunityCost
-      }
+      type: 'cash_drag',
+      title: 'Cash Drag Alert',
+      description: `${cashPercentage.toFixed(0)}% of your portfolio is in cash`,
+      severity: cashPercentage > 20 ? 'high' : 'medium',
+      action: 'Consider investing excess cash',
+      cashPercentage: cashPercentage
     });
   }
   
   return insights;
-}
+};
 
-export function generateAllocationInsights(
-  categories: CategoryAnalysis[],
-  totalValue: number
-): PortfolioInsight[] {
-  const insights: PortfolioInsight[] = [];
+export const generatePortfolioInsights = (holdings: any[]): any[] => {
+  const performanceInsights = generatePerformanceInsights(holdings);
+  const allocationInsights = generateAllocationInsights(holdings);
+  const concentrationInsights = generateConcentrationInsights(holdings);
+  const cashDragInsights = generateCashDragInsights(holdings);
   
-  categories.forEach(category => {
-    if (category.status === 'underweight' && Math.abs(category.gapAmount) > 5000) {
-      const underweightAmount = Math.abs(category.gapAmount);
-      const expectedReturn = underweightAmount * 0.07; // 7% expected return
-      
-      insights.push({
-        id: `${category.name.toLowerCase()}-underweight`,
-        type: 'opportunity',
-        category: 'allocation',
-        title: `${category.name} Underweight`,
-        problem: `${category.name} ${category.gap.toFixed(1)}% below target allocation`,
-        solution: `Add ${(underweightAmount/1000).toFixed(0)}k to ${category.name} holdings`,
-        benefit: `Optimize risk-adjusted returns and reduce concentration`,
-        dollarImpact: expectedReturn,
-        timeline: 'Next month',
-        actionText: `Add to ${category.name}`,
-        priority: 8,
-        isClickable: true,
-        metadata: {
-          currentPercent: category.currentPercent,
-          targetPercent: category.targetPercent,
-          gapAmount: category.gapAmount
-        }
-      });
-    }
-    
-    if (category.status === 'overweight' && category.gap > 5) {
-      const overweightAmount = Math.abs(category.gapAmount);
-      
-      insights.push({
-        id: `${category.name.toLowerCase()}-overweight`,
-        type: 'optimization',
-        category: 'allocation',
-        title: `${category.name} Overweight`,
-        problem: `${category.name} ${category.gap.toFixed(1)}% above target allocation`,
-        solution: `Reduce ${category.name} position by ${(overweightAmount/1000).toFixed(0)}k`,
-        benefit: `Improve portfolio balance and reduce concentration risk`,
-        dollarImpact: overweightAmount * 0.02, // Risk reduction value
-        timeline: 'Next rebalancing',
-        actionText: `Rebalance ${category.name}`,
-        priority: 7,
-        isClickable: true,
-        metadata: {
-          currentPercent: category.currentPercent,
-          targetPercent: category.targetPercent,
-          excessAmount: overweightAmount
-        }
-      });
-    }
-  });
-  
-  return insights;
-}
-
-export function generateConcentrationInsights(
-  holdings: Holding[],
-  totalValue: number
-): PortfolioInsight[] {
-  const insights: PortfolioInsight[] = [];
-  
-  // Check for individual position concentration
-  holdings.forEach(holding => {
-    const concentration = (holding.valueSGD / totalValue) * 100;
-    
-    if (concentration > 15) { // Over 15% in single position
-      const riskReduction = holding.valueSGD * 0.05; // Risk reduction value
-      
-      insights.push({
-        id: `concentration-${holding.symbol}`,
-        type: concentration > 20 ? 'urgent' : 'optimization',
-        category: 'risk',
-        title: `${holding.symbol} Concentration Risk`,
-        problem: `${holding.symbol} represents ${concentration.toFixed(1)}% of portfolio`,
-        solution: `Consider reducing ${holding.symbol} position size`,
-        benefit: `Reduce concentration risk and improve diversification`,
-        dollarImpact: riskReduction,
-        timeline: 'Next rebalancing',
-        actionText: `Reduce ${holding.symbol}`,
-        priority: concentration > 20 ? 10 : 7,
-        isClickable: true,
-        metadata: {
-          concentration: concentration,
-          holdingValue: holding.valueSGD,
-          symbol: holding.symbol
-        }
-      });
-    }
-  });
-  
-  // Check for location concentration
-  const locationConcentration = holdings.reduce((acc, holding) => {
-    acc[holding.location] = (acc[holding.location] || 0) + holding.valueSGD;
-    return acc;
-  }, {} as Record<string, number>);
-  
-  Object.entries(locationConcentration).forEach(([location, value]) => {
-    const concentration = (value / totalValue) * 100;
-    
-    if (concentration > 40) { // Over 40% in single location
-      insights.push({
-        id: `location-concentration-${location}`,
-        type: 'optimization',
-        category: 'risk',
-        title: `${location} Location Risk`,
-        problem: `${concentration.toFixed(1)}% of portfolio in ${location}`,
-        solution: `Consider diversifying across multiple brokers/locations`,
-        benefit: `Reduce counterparty risk and improve security`,
-        dollarImpact: value * 0.02, // Risk reduction value
-        timeline: 'Consider for new investments',
-        actionText: `Diversify Locations`,
-        priority: 6,
-        isClickable: true,
-        metadata: {
-          location: location,
-          concentration: concentration,
-          value: value
-        }
-      });
-    }
-  });
-  
-  return insights;
-}
-
-export function generatePerformanceInsights(
-  holdings: Holding[],
-  totalValue: number
-): PortfolioInsight[] {
-  const insights: PortfolioInsight[] = [];
-  
-  // Check for holdings with cost basis for performance analysis
-  const holdingsWithCostBasis = holdings.filter(h => h.costBasis && h.costBasis > 0);
-  
-  holdingsWithCostBasis.forEach(holding => {
-    const gainLoss = holding.valueSGD - holding.costBasis!;
-    const gainLossPercent = (gainLoss / holding.costBasis!) * 100;
-    
-    // Significant losses (>20%) might warrant review
-    if (gainLossPercent < -20) {
-      insights.push({
-        id: `performance-${holding.symbol}`,
-        type: 'optimization',
-        category: 'performance',
-        title: `${holding.symbol} Performance Review`,
-        problem: `${holding.symbol} down ${Math.abs(gainLossPercent).toFixed(1)}% from cost basis`,
-        solution: `Review ${holding.symbol} position and consider rebalancing`,
-        benefit: `Optimize portfolio performance and tax efficiency`,
-        dollarImpact: Math.abs(gainLoss),
-        timeline: 'Review this month',
-        actionText: `Review ${holding.symbol}`,
-        priority: 5,
-        isClickable: true,
-        metadata: {
-          gainLoss: gainLoss,
-          gainLossPercent: gainLossPercent,
-          costBasis: holding.costBasis
-        }
-      });
-    }
-  });
-  
-  return insights;
-}
+  return [
+    ...performanceInsights,
+    ...allocationInsights,
+    ...concentrationInsights,
+    ...cashDragInsights
+  ];
+};
 
 export function generateComprehensiveInsights(
   holdings: Holding[],
   displayCurrency: CurrencyCode = 'SGD'
-): PortfolioInsight[] {
-  const totalValue = holdings.reduce((sum, h) => sum + h.valueSGD, 0);
-  const categories = analyzePortfolioAllocation(holdings, displayCurrency);
-  
-  const allInsights: PortfolioInsight[] = [];
-  
-  // Generate all types of insights
-  allInsights.push(...generateCashDragInsights(categories, totalValue));
-  allInsights.push(...generateAllocationInsights(categories, totalValue));
-  allInsights.push(...generateConcentrationInsights(holdings, totalValue));
-  allInsights.push(...generatePerformanceInsights(holdings, totalValue));
-  
-  // Sort by priority (highest first) and return top 6
-  return allInsights
-    .sort((a, b) => b.priority - a.priority)
-    .slice(0, 6);
+): any[] {
+  // Use the existing generatePortfolioInsights function
+  return generatePortfolioInsights(holdings);
 }
 
 // Utility functions

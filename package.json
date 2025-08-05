@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "seed": "tsx scripts/seed.ts",
+    "import-monthly-snapshots": "tsx scripts/import-monthly-snapshots.ts",
+    "import-202X-snapshots": "tsx scripts/import-202X-monthly-snapshots.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     // Get financial profile from database (stored in User model)
     const user = await prisma.user.findFirst({
-      where: { id: 'default' } // Assuming single user for now
+      where: { email: 'dev@local.test' } // Use the same user as financial-profile API
     }) || {
       id: 'default',
       email: 'default@example.com',
@@ -68,8 +68,8 @@ export async function POST(request: NextRequest) {
       fiProgressReminder: true,
       createdAt: new Date(),
       updatedAt: new Date(),
-      coreTarget: 25,
-      growthTarget: 55,
+      coreTarget: 40,
+      growthTarget: 40,
       hedgeTarget: 10,
       liquidityTarget: 10,
       rebalanceThreshold: 5
@@ -77,6 +77,27 @@ export async function POST(request: NextRequest) {
 
     // Get display currency from request or use user's primary currency
     const displayCurrency = body.displayCurrency || user.primaryCurrency || 'SGD';
+
+    // Get exchange rates for accurate calculations
+    let exchangeRates = null;
+    try {
+      const ratesResponse = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/exchange-rates`);
+      if (ratesResponse.ok) {
+        const ratesData = await ratesResponse.json();
+        if (ratesData.rates) {
+          exchangeRates = {
+            SGD_TO_USD: 1 / ratesData.rates.USD_TO_SGD,
+            SGD_TO_INR: 63.0, // Approximate rate
+            USD_TO_SGD: ratesData.rates.USD_TO_SGD,
+            USD_TO_INR: ratesData.rates.USD_TO_SGD * 63.0,
+            INR_TO_SGD: 1 / 63.0,
+            INR_TO_USD: 1 / (ratesData.rates.USD_TO_SGD * 63.0)
+          };
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch exchange rates:', error);
+    }
 
     // Build agent request
     const agentRequest: AgentRequest = {
@@ -122,7 +143,8 @@ export async function POST(request: NextRequest) {
           rebalanceThreshold: user.rebalanceThreshold,
           profileCompleteness: user.profileCompleteness
         },
-        displayCurrency: displayCurrency as any
+        displayCurrency: displayCurrency as any,
+        exchangeRates: exchangeRates
       }
     };
 

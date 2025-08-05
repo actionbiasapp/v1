@@ -40,6 +40,7 @@ model User {
   auditLogs           AuditLog[]
   expenseRecords      ExpenseRecord[]
   fiPlans             FIPlan[]
+  fiMilestones        FIMilestone[]
   holdings            Holdings[]
   incomeRecords       IncomeRecord[]
   netWorthRecords     NetWorthRecord[]
@@ -48,6 +49,7 @@ model User {
   srsPlans            SRSPlan[]
   savingsRecords      SavingsRecord[]
   yearlyData          YearlyData[]
+  monthlySnapshots    MonthlySnapshot[]
 }
 
 model IncomeRecord {
@@ -238,6 +240,21 @@ model FIPlan {
   @@index([userId])
 }
 
+model FIMilestone {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String   // e.g., "My First Million", "Lean FI", "Full FI"
+  amount      Decimal  // Target amount in SGD
+  description String?  // Optional description
+  order       Int      // For ordering milestones
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, order])
+}
+
 model FIProgressRecord {
   id              String   @id @default(cuid())
   fiPlanId        String
@@ -350,6 +367,24 @@ model YearlyData {
 
   @@unique([userId, year])
   @@index([userId, year])
+}
+
+model MonthlySnapshot {
+  id              String   @id @default(cuid())
+  userId          String
+  year            Int
+  month           Int
+  income          Decimal  @default(0)
+  expenses        Decimal  @default(0)
+  portfolioValue  Decimal  @default(0)
+  netWorth        Decimal  @default(0)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, year, month])
+  @@index([userId, year, month])
 }
 
 model CronJobLog {

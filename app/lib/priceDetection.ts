@@ -17,14 +17,14 @@ export interface PriceDetectionResult {
   assetType?: 'stock' | 'crypto' | 'manual'; // NEW
 }
 
-import { config } from './config';
+import { APP_CONFIG } from './config';
 
 export class PriceDetectionService {
   private readonly FMP_API_KEY: string;
   private readonly FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
 
   constructor() {
-    this.FMP_API_KEY = config.FMP_API_KEY;
+    this.FMP_API_KEY = process.env.FMP_API_KEY || '';
     if (!this.FMP_API_KEY) {
       console.warn('FMP_API_KEY is not set. Price detection for stocks will fail.');
     }
@@ -208,7 +208,7 @@ export class PriceDetectionService {
     }
     // Get existing holdings for this symbol
     try {
-      const baseUrl = config.BASE_URL;
+      const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:3000';
       const holdingsResponse = await fetch(`${baseUrl}/api/holdings`);
       if (holdingsResponse.ok) {
         const holdings = await holdingsResponse.json();

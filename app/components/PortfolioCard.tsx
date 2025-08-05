@@ -1,9 +1,12 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { type CurrencyCode, formatCurrency, getHoldingDisplayValue, formatCurrencyDisplay } from '@/app/lib/currency';
+import { type CurrencyCode, formatCurrency, getHoldingDisplayValue, formatCurrencyDisplay, convertCurrency } from '@/app/lib/currency';
+import { formatCurrencyWithVisibility } from '@/app/lib/numberVisibility';
+import { useNumberVisibility } from '@/app/lib/context/NumberVisibilityContext';
 import { CategoryData, Holding, HoldingFormData } from '@/app/lib/types/shared';
 import { getProgressColor, createHolding, updateHolding, deleteHolding } from '@/app/lib/portfolioCRUD';
+import { getAssetIcon } from '@/app/lib/iconUtils';
 import HoldingForm from './forms/HoldingForm';
 import IndividualHoldingCard from './IndividualHoldingCard';
 
@@ -17,16 +20,7 @@ interface PortfolioCardProps {
   onHoldingsUpdate?: () => void;
 }
 
-// Asset icon helper - moved from main component
-const getAssetIcon = (symbol: string): string => {
-  const icons: { [key: string]: string } = {
-    'NVDA': '🇺🇸', 'GOOG': '🇺🇸', 'TSLA': '🇺🇸', 'IREN': '🇺🇸',
-    'VUAA': '🇺🇸', 'INDIA': '🇮🇳', 'SGD': '🇸🇬', 'USDC': '💵',
-    'BTC': '₿', 'WBTC': '₿', 'GOLD': '🥇', 'HIMS': '🇺🇸', 'UNH': '🇺🇸',
-    'AAPL': '🇺🇸', 'AMGN': '🇺🇸', 'CRM': '🇺🇸', 'ETH': '⟠'
-  };
-  return icons[symbol] || '📊';
-};
+
 
 const PortfolioCard = React.memo(({ 
   category, 
@@ -37,6 +31,7 @@ const PortfolioCard = React.memo(({
   onToggleExpand, 
   onHoldingsUpdate 
 }: PortfolioCardProps) => {
+  const { numbersVisible } = useNumberVisibility();
   // Local state for form management
   const [editingHolding, setEditingHolding] = useState<string | null>(null);
   const [addingToCategory, setAddingToCategory] = useState<boolean>(false);
@@ -51,6 +46,27 @@ const PortfolioCard = React.memo(({
   // Calculate progress and target values
   const targetValue = (category.target / 100) * totalValue;
   const progressPercentage = Math.min((category.currentValue / targetValue) * 100, 100);
+
+  // Calculate profit/loss for holdings
+  const calculateHoldingProfitLoss = (holding: Holding) => {
+    if (!holding.unitPrice || !holding.currentUnitPrice || !holding.quantity) {
+      return { profitLoss: 0, profitLossPercent: 0, hasData: false };
+    }
+
+    const buyPrice = holding.unitPrice;
+    const currentPrice = holding.currentUnitPrice;
+    const quantity = holding.quantity;
+    
+    const profitLossOriginalCurrency = (currentPrice - buyPrice) * quantity;
+    const profitLossPercent = ((currentPrice - buyPrice) / buyPrice) * 100;
+    
+    // For now, assume same currency (can be enhanced with exchange rates later)
+    return { 
+      profitLoss: profitLossOriginalCurrency, 
+      profitLossPercent, 
+      hasData: true 
+    };
+  };
 
   // Event handlers
   const handleToggleExpand = useCallback(() => {
@@ -177,7 +193,7 @@ const PortfolioCard = React.memo(({
         </div>
         <div>
           <div className="card-value">
-            {formatCurrency(category.currentValue, displayCurrency, { compact: true, precision: 0 })}
+            {formatCurrencyWithVisibility(category.currentValue, displayCurrency, numbersVisible, { compact: true, precision: 0 })}
           </div>
           <span className="expand-indicator">{isExpanded ? '▲' : '▼'}</span>
         </div>
@@ -199,25 +215,35 @@ const PortfolioCard = React.memo(({
       {/* Holdings Preview (when collapsed) */}
       {!isExpanded && (
         <div className="holdings-preview">
-          {category.holdings.slice(0, 3).map((holding, index) => (
-            <div key={holding.id || index} className="holding-item">
-              <span>
-                {getAssetIcon(holding.symbol)} {holding.symbol}
-                {holding.priceSource !== 'manual' && (
-                  <span className={`inline-block w-1.5 h-1.5 rounded-full ml-1 align-middle ${
-                    holding.priceUpdated && (new Date().getTime() - new Date(holding.priceUpdated).getTime() < 24 * 60 * 60 * 1000)
-                      ? 'bg-green-400'
-                      : 'bg-green-950'
-                  }`} style={{ boxShadow: '0 0 0 1px #222' }} title={
-                    holding.priceUpdated && (new Date().getTime() - new Date(holding.priceUpdated).getTime() < 24 * 60 * 60 * 1000)
-                      ? 'Auto-updated in last 24h'
-                      : 'Auto-updated (not in last 24h)'
-                  }></span>
-                )}
-              </span>
-              <span>{formatCurrencyDisplay(holding, displayCurrency)}</span>
-            </div>
-          ))}
+          {category.holdings.slice(0, 3).map((holding, index) => {
+            const { profitLoss, profitLossPercent, hasData } = calculateHoldingProfitLoss(holding);
+            return (
+              <div key={holding.id || index} className="holding-item">
+                <span>
+                  {getAssetIcon(holding.symbol, holding.name)} {holding.symbol}
+                  {holding.priceSource !== 'manual' && (
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full ml-1 align-middle ${
+                      holding.priceUpdated && (new Date().getTime() - new Date(holding.priceUpdated).getTime() < 24 * 60 * 60 * 1000)
+                        ? 'bg-green-400'
+                        : 'bg-green-950'
+                    }`} style={{ boxShadow: '0 0 0 1px #222' }} title={
+                      holding.priceUpdated && (new Date().getTime() - new Date(holding.priceUpdated).getTime() < 24 * 60 * 60 * 1000)
+                        ? 'Auto-updated in last 24h'
+                        : 'Auto-updated (not in last 24h)'
+                    }></span>
+                  )}
+                </span>
+                <div className="flex flex-col items-end">
+                  <span>{numbersVisible ? formatCurrencyDisplay(holding, displayCurrency) : '••••••'}</span>
+                  {hasData && (
+                    <span className={`text-xs ${profitLoss >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {profitLoss >= 0 ? '+' : ''}{profitLoss.toFixed(0)} ({profitLoss >= 0 ? '+' : ''}{profitLossPercent.toFixed(1)}%)
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
           {category.holdings.length > 3 && (
             <div style={{ textAlign: 'center', color: '#60a5fa', fontSize: '0.8rem', marginTop: '0.5rem' }}>
               +{category.holdings.length - 3} more holdings
@@ -252,7 +278,7 @@ const PortfolioCard = React.memo(({
             {!addingToCategory && (
               <button
                 onClick={handleStartAdding}
-                className="bg-emerald-600 text-white py-0.5 px-2 rounded text-xs font-medium hover:bg-emerald-700 transition-colors"
+                className="bg-transparent border-2 border-emerald-500 text-emerald-500 hover:bg-emerald-500 hover:text-gray-900 px-3 py-1.5 rounded text-xs font-medium transition-all duration-200 hover:transform hover:-translate-y-0.5 hover:shadow-md"
               >
                 Add Holdings
               </button>

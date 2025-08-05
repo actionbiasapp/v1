@@ -2,34 +2,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { 
-  generateComprehensiveInsights,
-  calculatePortfolioMetrics,
-  type PortfolioInsight 
+  generatePortfolioInsights,
+  calculatePortfolioMetrics
 } from '@/app/lib/aiInsights';
-import { 
-  generateTaxOptimizationInsights,
-  calculateSRSOptimization,
-  estimateIncomeFromPortfolio 
-} from '@/app/lib/singaporeTax';
 
 const prisma = new PrismaClient();
 
 interface InsightsResponse {
   success: boolean;
-  insights: PortfolioInsight[];
+  insights: any[];
   portfolioMetrics: {
     totalValue: number;
     holdingsCount: number;
     diversificationScore: number;
     categoryBreakdown: Record<string, number>;
-  };
-  taxIntelligence: {
-    srsRecommendation: number;
-    taxSavings: number;
-    monthlyTarget: number;
-    urgencyLevel: string;
-    urgencyDays: number;
-    employmentPassAdvantage: number;
   };
   lastUpdated: string;
   error?: string;
@@ -67,14 +53,6 @@ export async function GET(request: NextRequest) {
           diversificationScore: 0,
           categoryBreakdown: {}
         },
-        taxIntelligence: {
-          srsRecommendation: 0,
-          taxSavings: 0,
-          monthlyTarget: 0,
-          urgencyLevel: 'low',
-          urgencyDays: 0,
-          employmentPassAdvantage: 0
-        },
         lastUpdated: new Date().toISOString()
       });
     }
@@ -100,37 +78,37 @@ export async function GET(request: NextRequest) {
     const portfolioMetrics = calculatePortfolioMetrics(formattedHoldings);
     
     // Generate comprehensive portfolio insights
-    const portfolioInsights = generateComprehensiveInsights(formattedHoldings);
+    const portfolioInsights = generatePortfolioInsights(formattedHoldings);
     
     // Generate tax optimization insights
-    const estimatedIncome = estimateIncomeFromPortfolio(totalValue);
-    const taxInsights = generateTaxOptimizationInsights(
-      formattedHoldings,
-      totalValue,
-      estimatedIncome
-    );
+    // const estimatedIncome = estimateIncomeFromPortfolio(totalValue);
+    // const taxInsights = generateTaxOptimizationInsights(
+    //   formattedHoldings,
+    //   totalValue,
+    //   estimatedIncome
+    // );
     
     // Calculate SRS analysis for tax intelligence
-    const srsAnalysis = calculateSRSOptimization(estimatedIncome, 0, 'Employment Pass');
+    // const srsAnalysis = calculateSRSOptimization(estimatedIncome, 0, 'Employment Pass');
     
     // Combine all insights and sort by priority
     const allInsights = [
       ...portfolioInsights,
-      ...taxInsights.map(insight => ({
-        id: insight.id,
-        type: insight.type,
-        category: insight.category,
-        title: insight.title,
-        problem: insight.problem,
-        solution: insight.solution,
-        benefit: insight.benefit,
-        dollarImpact: insight.dollarImpact,
-        timeline: insight.timeline,
-        actionText: insight.actionText,
-        priority: insight.priority,
-        isClickable: insight.isClickable,
-        metadata: insight.metadata
-      }))
+      // ...taxInsights.map(insight => ({
+      //   id: insight.id,
+      //   type: insight.type,
+      //   category: insight.category,
+      //   title: insight.title,
+      //   problem: insight.problem,
+      //   solution: insight.solution,
+      //   benefit: insight.benefit,
+      //   dollarImpact: insight.dollarImpact,
+      //   timeline: insight.timeline,
+      //   actionText: insight.actionText,
+      //   priority: insight.priority,
+      //   isClickable: insight.isClickable,
+      //   metadata: insight.metadata
+      // }))
     ].sort((a, b) => b.priority - a.priority).slice(0, 8);
 
     const response: InsightsResponse = {
@@ -141,14 +119,6 @@ export async function GET(request: NextRequest) {
         holdingsCount: formattedHoldings.length,
         diversificationScore: portfolioMetrics.diversificationScore,
         categoryBreakdown: portfolioMetrics.categoryBreakdown
-      },
-      taxIntelligence: {
-        srsRecommendation: srsAnalysis.recommendedContribution,
-        taxSavings: srsAnalysis.taxSavings,
-        monthlyTarget: srsAnalysis.monthlyTarget,
-        urgencyLevel: srsAnalysis.urgencyLevel,
-        urgencyDays: srsAnalysis.urgencyDays,
-        employmentPassAdvantage: srsAnalysis.employmentPassAdvantage
       },
       lastUpdated: new Date().toISOString()
     };
@@ -166,14 +136,6 @@ export async function GET(request: NextRequest) {
         holdingsCount: 0,
         diversificationScore: 0,
         categoryBreakdown: {}
-      },
-      taxIntelligence: {
-        srsRecommendation: 0,
-        taxSavings: 0,
-        monthlyTarget: 0,
-        urgencyLevel: 'low',
-        urgencyDays: 0,
-        employmentPassAdvantage: 0
       },
       lastUpdated: new Date().toISOString()
     }, { status: 500 });

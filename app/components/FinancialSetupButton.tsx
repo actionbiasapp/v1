@@ -93,7 +93,7 @@ export default function FinancialSetupButton({
     console.log('✅ Financial profile updated:', updatedProfile);
   };
 
-  const buttonClass = "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white border-transparent shadow-md hover:shadow-lg";
+  const buttonClass = "bg-transparent border-2 border-teal-600 hover:bg-teal-600 hover:border-teal-700 text-teal-600 hover:text-white border-transparent shadow-md hover:shadow-lg";
   const icon = "⚙️";
   
   if (isLoading) {
@@ -114,19 +114,14 @@ export default function FinancialSetupButton({
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           className={`
-            flex items-center gap-1.5 px-3 py-2.5 rounded-xl border transition-all duration-200 font-medium text-sm min-w-[44px] min-h-[44px]
+            flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border transition-all duration-200 font-medium text-sm min-w-[44px] min-h-[44px]
             ${buttonClass}
             ${isHovered ? 'scale-105' : ''}
           `}
           title={`Financial Setup`}
         >
           <span className="text-base">{icon}</span>
-          
-          <div className="flex flex-col items-start min-w-0">
-            <span className="text-sm font-medium whitespace-nowrap">
-              <span className="hidden xs:inline">Setup</span>
-            </span>
-          </div>
+          <span className="hidden xs:inline text-sm font-medium">Setup</span>
         </button>
       </div>
 

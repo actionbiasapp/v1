@@ -379,7 +379,48 @@ const HoldingForm = React.memo(({
           </div>
         </div>
 
-        {/* Location and Category - Fourth row */}
+        {/* Total Values - Fourth row */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Total Cost Basis
+            </label>
+            <div className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px] flex items-center">
+              <span className="text-slate-200 text-sm">
+                {formatNumberWithSeparators(totalBuyValue)} {formData.currency}
+              </span>
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Total Current Value
+            </label>
+            <div className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px] flex items-center">
+              <span className="text-slate-200 text-sm">
+                {formatNumberWithSeparators(totalCurrentValue)} {formData.currency}
+              </span>
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Total Value (SGD)
+            </label>
+            <div className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5 text-sm h-[44px] flex items-center">
+              <span className="text-slate-200 text-sm">
+                {formData.currency === 'SGD' 
+                  ? formatNumberWithSeparators(totalCurrentValue)
+                  : formData.currency === 'USD'
+                  ? formatNumberWithSeparators(totalCurrentValue * 1.35)
+                  : formatNumberWithSeparators(totalCurrentValue * 0.016)
+                } SGD
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Location and Category - Fifth row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">

@@ -34,24 +34,34 @@ export function useActionItemsProcessor({
           isClickable: true
         }),
         normalizeActionItem({
-          id: 'core-gap',
+          id: 'core-underweight',
           type: 'opportunity',
-          problem: 'Core underweight by 4k',
-          solution: 'Transfer from cash → Buy more VUAA or Indian ETFs',
+          problem: 'Core underweight by 40k (29% vs 40% target)',
+          solution: 'Add more VUAA or Indian ETFs to reach 40% target',
           benefit: 'Reach target allocation, earn 7%/year',
           timeline: 'Execute this week',
-          actionText: 'Transfer & Buy',
+          actionText: 'Add to Core',
           isClickable: true
         }),
         normalizeActionItem({
-          id: 'growth-rebalance',
+          id: 'hedge-overweight',
           type: 'optimization',
-          problem: 'Growth slightly overweight',
-          solution: 'Consider trimming from top performers when rebalancing',
-          benefit: 'Maintain optimal risk balance',
-          timeline: 'Next quarterly review',
-          actionText: 'Plan Rebalance',
-          isClickable: false
+          problem: 'Hedge overweight by 49k (22% vs 10% target)',
+          solution: 'Consider reducing crypto/gold positions',
+          benefit: 'Improve portfolio balance and reduce concentration',
+          timeline: 'Next rebalancing',
+          actionText: 'Rebalance Hedge',
+          isClickable: true
+        }),
+        normalizeActionItem({
+          id: 'liquidity-overweight',
+          type: 'opportunity',
+          problem: 'Excess cash: 67k above target (27% vs 10% target)',
+          solution: 'Deploy excess cash to underweight categories',
+          benefit: 'Earn additional returns instead of minimal interest',
+          timeline: 'Execute this week',
+          actionText: 'Deploy Cash',
+          isClickable: true
         })
       ];
 

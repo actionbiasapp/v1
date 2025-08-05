@@ -11,12 +11,12 @@ export interface WeightedAverageResult {
   };
 }
 
-import { config } from './config';
+import { APP_CONFIG } from './config';
 
 // Currency conversion utility
 async function getExchangeRates() {
   try {
-    const baseUrl = config.BASE_URL;
+    const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:3000';
     const response = await fetch(`${baseUrl}/api/exchange-rates`);
     if (!response.ok) throw new Error('Exchange rates API failed');
     const data = await response.json();
@@ -63,7 +63,7 @@ export async function calculateWeightedAverage(
     const rates = await getExchangeRates();
     
     // Use absolute URL for both browser and Node.js contexts
-    const baseUrl = config.BASE_URL;
+    const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:3000';
     const response = await fetch(`${baseUrl}/api/holdings`);
     
     if (!response.ok) {
@@ -158,7 +158,7 @@ export function calculateTotalFromUnits(quantity: number, unitPrice: number): nu
 // Helper function to detect existing holdings for form pre-population
 export async function findExistingHolding(symbol: string): Promise<any | null> {
   try {
-    const baseUrl = config.BASE_URL;
+    const baseUrl = typeof window !== 'undefined' ? '' : 'http://localhost:3000';
     const response = await fetch(`${baseUrl}/api/holdings`);
     
     if (!response.ok) return null;

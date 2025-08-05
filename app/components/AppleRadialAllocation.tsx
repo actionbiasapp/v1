@@ -2,11 +2,15 @@
 
 import { useState } from 'react';
 import { CategoryData } from '@/app/lib/types/shared';
-import { formatCurrency } from '@/app/lib/currency';
+import { formatCurrency, type CurrencyCode, type ExchangeRates } from '@/app/lib/currency';
+import { formatCurrencyWithVisibility } from '@/app/lib/numberVisibility';
+import { useNumberVisibility } from '@/app/lib/context/NumberVisibilityContext';
 
 interface AppleRadialAllocationProps {
   categories: CategoryData[];
   className?: string;
+  displayCurrency?: CurrencyCode;
+  exchangeRates?: ExchangeRates | null;
 }
 
 // Color mapping from your existing system
@@ -24,7 +28,13 @@ const STATUS_COLORS = {
   excess: '#ef4444'
 };
 
-export default function AppleRadialAllocation({ categories, className = '' }: AppleRadialAllocationProps) {
+export default function AppleRadialAllocation({ 
+  categories, 
+  className = '',
+  displayCurrency = 'SGD',
+  exchangeRates = null
+}: AppleRadialAllocationProps) {
+  const { numbersVisible } = useNumberVisibility();
   const [selectedCategory, setSelectedCategory] = useState<CategoryData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -277,7 +287,7 @@ export default function AppleRadialAllocation({ categories, className = '' }: Ap
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div className="bg-gray-700/50 rounded-lg p-3 text-center">
                 <div className="text-lg font-bold text-white">
-                  {formatCurrency(selectedCategory.currentValue, 'SGD')}
+                  {formatCurrencyWithVisibility(selectedCategory.currentValue, displayCurrency, numbersVisible)}
                 </div>
                 <div className="text-sm text-gray-400 mb-1">
                   {selectedCategory.currentPercent.toFixed(1)}%
@@ -286,7 +296,7 @@ export default function AppleRadialAllocation({ categories, className = '' }: Ap
               </div>
               <div className="bg-gray-700/50 rounded-lg p-3 text-center">
                 <div className="text-lg font-bold text-white">
-                  {formatCurrency(getTargetValue(selectedCategory), 'SGD')}
+                  {formatCurrencyWithVisibility(getTargetValue(selectedCategory), displayCurrency, numbersVisible)}
                 </div>
                 <div className="text-sm text-gray-400 mb-1">
                   {selectedCategory.target}%
