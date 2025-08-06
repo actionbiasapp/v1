@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
+import { useSession, signOut } from 'next-auth/react';
 import NetWorthTracker from './NetWorthTracker';
 import FixedPortfolioGrid from './FixedPortfolioGrid';
 import PortfolioStatusMetrics from './PortfolioStatusMetrics';
@@ -32,6 +33,50 @@ const LiveIndicator = () => (
     <span className="text-xs text-green-400">Live</span>
   </div>
 );
+
+// User header component
+const UserHeader = () => {
+  const { data: session } = useSession();
+  
+  return (
+    <div className="flex justify-between items-center p-4 border-b" style={{ borderColor: 'var(--glass-border)' }}>
+      <div className="flex items-center gap-4">
+        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+          Action Bias Portfolio
+        </h1>
+        <LiveIndicator />
+      </div>
+      
+      <div className="flex items-center gap-4">
+        <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          Signed in as: {session?.user?.email}
+        </div>
+        <a
+          href="/profile"
+          className="px-3 py-1 text-sm rounded-md transition-all"
+          style={{
+            background: 'var(--info-bg)',
+            color: 'var(--info-text)',
+            border: '1px solid var(--info-border)'
+          }}
+        >
+          Profile
+        </a>
+        <button
+          onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+          className="px-3 py-1 text-sm rounded-md transition-all"
+          style={{
+            background: 'var(--error-bg)',
+            color: 'var(--error-text)',
+            border: '1px solid var(--error-border)'
+          }}
+        >
+          Sign Out
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // Default allocation targets
 const DEFAULT_TARGETS = DEFAULT_ALLOCATION_TARGETS;
@@ -289,6 +334,9 @@ export default function PortfolioDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
+      {/* User Header */}
+      <UserHeader />
+      
       {/* Mobile-optimized header */}
       <div className="sticky top-0 z-40 bg-gray-900/95 backdrop-blur-xl border-b border-gray-800/50">
         <div className="max-w-6xl mx-auto px-4 py-3">

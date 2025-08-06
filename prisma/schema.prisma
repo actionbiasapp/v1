@@ -10,7 +10,7 @@ datasource db {
 model User {
   id                  String              @id @default(cuid())
   email               String              @unique
-  name                String
+  name                String?
   country             String              @default("Singapore")
   taxStatus           String              @default("Employment Pass")
   primaryCurrency     String              @default("SGD")
@@ -36,20 +36,24 @@ model User {
   hedgeTarget         Int                 @default(10)
   liquidityTarget     Int                 @default(10)
   rebalanceThreshold  Int                 @default(5)
+  emailVerified       DateTime?
+  image               String?
+  accounts            Account[]
   categories          AssetCategory[]
   auditLogs           AuditLog[]
   expenseRecords      ExpenseRecord[]
-  fiPlans             FIPlan[]
   fiMilestones        FIMilestone[]
+  fiPlans             FIPlan[]
   holdings            Holdings[]
   incomeRecords       IncomeRecord[]
+  monthlySnapshots    MonthlySnapshot[]
   netWorthRecords     NetWorthRecord[]
   portfolioStrategies PortfolioStrategy[]
   recommendations     Recommendation[]
   srsPlans            SRSPlan[]
   savingsRecords      SavingsRecord[]
+  sessions            Session[]
   yearlyData          YearlyData[]
-  monthlySnapshots    MonthlySnapshot[]
 }
 
 model IncomeRecord {
@@ -243,10 +247,10 @@ model FIPlan {
 model FIMilestone {
   id          String   @id @default(cuid())
   userId      String
-  name        String   // e.g., "My First Million", "Lean FI", "Full FI"
-  amount      Decimal  // Target amount in SGD
-  description String?  // Optional description
-  order       Int      // For ordering milestones
+  name        String
+  amount      Decimal
+  description String?
+  order       Int
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -316,7 +320,7 @@ model Holdings {
   priceSource      String?
   priceUpdated     DateTime?
   unitPrice        Decimal?
-  assetType        String?   // 'stock', 'crypto', or 'manual'
+  assetType        String?
   category         AssetCategory @relation(fields: [categoryId], references: [id])
   user             User          @relation(fields: [userId], references: [id])
 }
@@ -348,64 +352,64 @@ model Recommendation {
 }
 
 model YearlyData {
-  id           String   @id @default(cuid())
-  userId       String
-  year         Int
-  netWorth     Decimal  @default(0)
-  income       Decimal  @default(0)
-  expenses     Decimal  @default(0)
-  savings      Decimal  @default(0)
-  srs          Decimal  @default(0)
-  marketGains  Decimal  @default(0)
-  returnPercent Decimal @default(0)
-  notes        String?
-  isEstimated  Boolean  @default(false)
-  confidence   String   @default("medium")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String   @id @default(cuid())
+  userId        String
+  year          Int
+  netWorth      Decimal  @default(0)
+  income        Decimal  @default(0)
+  expenses      Decimal  @default(0)
+  savings       Decimal  @default(0)
+  srs           Decimal  @default(0)
+  marketGains   Decimal  @default(0)
+  returnPercent Decimal  @default(0)
+  notes         String?
+  isEstimated   Boolean  @default(false)
+  confidence    String   @default("medium")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, year])
   @@index([userId, year])
 }
 
 model MonthlySnapshot {
-  id              String   @id @default(cuid())
-  userId          String
-  year            Int
-  month           Int
-  income          Decimal  @default(0)
-  expenses        Decimal  @default(0)
-  portfolioValue  Decimal  @default(0)
-  netWorth        Decimal  @default(0)
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  userId         String
+  year           Int
+  month          Int
+  income         Decimal  @default(0)
+  expenses       Decimal  @default(0)
+  portfolioValue Decimal  @default(0)
+  netWorth       Decimal  @default(0)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, year, month])
   @@index([userId, year, month])
 }
 
 model CronJobLog {
-  id        String   @id @default(cuid())
-  jobName   String
-  status    String   // SUCCESS or FAILURE
-  message   String?
-  runAt     DateTime @default(now())
+  id      String   @id @default(cuid())
+  jobName String
+  status  String
+  message String?
+  runAt   DateTime @default(now())
 
   @@index([jobName, runAt])
 }
 
 model UserPattern {
-  id            String   @id @default(cuid())
-  pattern       String   // "rename {company} to {new_name}"
-  successRate   Float    @default(0)
-  usageCount    Int      @default(0)
-  lastUsed      DateTime @default(now())
-  examples      String[] // ["rename standard chartered to Cash", ...]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String   @id @default(cuid())
+  pattern     String
+  successRate Float    @default(0)
+  usageCount  Int      @default(0)
+  lastUsed    DateTime @default(now())
+  examples    String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model ActionHistory {
@@ -415,5 +419,39 @@ model ActionHistory {
   success     Boolean
   patternUsed String?
   timestamp   DateTime @default(now())
-  metadata    Json?    // Store additional context
+  metadata    Json?
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
 }

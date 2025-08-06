@@ -1,27 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { getCurrentUser } from '@/app/lib/auth-utils';
 
 const prisma = new PrismaClient();
-const DEV_EMAIL = 'dev@local.test';
-
-// Helper to get dev user
-async function getDevUser() {
-  return prisma.user.findFirst({ where: { email: DEV_EMAIL } });
-}
 
 export async function GET() {
-  const user = await getDevUser();
-  if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
-  const data = await prisma.yearlyData.findMany({ where: { userId: user.id }, orderBy: { year: 'asc' } });
-  return NextResponse.json({ success: true, data });
+  try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    
+    const data = await prisma.yearlyData.findMany({ 
+      where: { userId: user.id }, 
+      orderBy: { year: 'asc' } 
+    });
+    return NextResponse.json({ success: true, data });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getDevUser();
-  if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
-  const body = await request.json();
-  const { year, netWorth, savings, income, expenses, srs, marketGains, returnPercent, notes } = body;
   try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    
+    const body = await request.json();
+    const { year, netWorth, savings, income, expenses, srs, marketGains, returnPercent, notes } = body;
+    
     const created = await prisma.yearlyData.create({
       data: {
         userId: user.id,
@@ -43,11 +48,13 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const user = await getDevUser();
-  if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
-  const body = await request.json();
-  const { year, netWorth, savings, income, expenses, srs, marketGains, returnPercent, notes } = body;
   try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    
+    const body = await request.json();
+    const { year, netWorth, savings, income, expenses, srs, marketGains, returnPercent, notes } = body;
+    
     const updated = await prisma.yearlyData.update({
       where: { userId_year: { userId: user.id, year } },
       data: {
@@ -68,11 +75,13 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const user = await getDevUser();
-  if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
-  const body = await request.json();
-  const { year } = body;
   try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    
+    const body = await request.json();
+    const { year } = body;
+    
     await prisma.yearlyData.delete({
       where: { userId_year: { userId: user.id, year } },
     });

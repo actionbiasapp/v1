@@ -5,13 +5,20 @@ import {
   validateRequiredFields, 
   createValidationErrorResponse 
 } from '@/app/lib/errorHandling';
+import { getCurrentUserId } from '@/app/lib/auth-utils';
 
 const prisma = new PrismaClient();
 
-// GET /api/holdings - Fetch all holdings
+// GET /api/holdings - Fetch all holdings for current user
 export async function GET() {
   try {
+    // Get current user ID
+    const userId = await getCurrentUserId();
+    
     const holdings = await prisma.holdings.findMany({
+      where: {
+        userId: userId
+      },
       include: {
         category: true,
       },
@@ -48,10 +55,13 @@ export async function GET() {
   }
 }
 
-// POST /api/holdings - Create new holding
+// POST /api/holdings - Create new holding for current user
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    
+    // Get current user ID
+    const userId = await getCurrentUserId();
     
     const {
       symbol,
@@ -69,7 +79,6 @@ export async function POST(request: NextRequest) {
       currentUnitPrice,
       manualPricing,
       assetType,
-      userId = 'default-user' // Temporary default user for testing
     } = body;
 
     // Validation
@@ -90,98 +99,69 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get or create user (for testing - using default user)
-    let user = await prisma.user.findFirst({
-      where: { id: userId }
-    });
-
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          id: userId,
-          email: 'test@example.com',
-          name: 'Test User',
-          country: 'Singapore',
-          taxStatus: 'Employment Pass'
-        }
-      });
-    }
-
     // Get or create category
     let categoryRecord = await prisma.assetCategory.findFirst({
-      where: {
+      where: { 
         name: category,
-        userId: user.id
+        userId: userId
       }
     });
 
     if (!categoryRecord) {
-      // Create category if it doesn't exist
-      const targetPercentages: { [key: string]: number } = {
-        'Core': 25,
-        'Growth': 55,
-        'Hedge': 10,
-        'Liquidity': 10
-      };
-
       categoryRecord = await prisma.assetCategory.create({
         data: {
           name: category,
-          targetPercentage: targetPercentages[category] || 20,
-          userId: user.id,
-          description: `${category} investments`
+          userId: userId
         }
       });
     }
 
-    // Create the holding
-    const newHolding = await prisma.holdings.create({
+    // Create holding with current user ID
+    const holding = await prisma.holdings.create({
       data: {
-        symbol: symbol.toUpperCase(),
+        symbol,
         name,
         valueSGD: sgdValue,
         valueINR: inrValue,
         valueUSD: usdValue,
         entryCurrency,
         location,
+        costBasis: costBasis ? Number(costBasis) : null,
+        quantity: quantity ? Number(quantity) : null,
+        unitPrice: unitPrice ? Number(unitPrice) : null,
+        currentUnitPrice: currentUnitPrice ? Number(currentUnitPrice) : null,
+        assetType: assetType || null,
         categoryId: categoryRecord.id,
-        userId: user.id,
-        costBasis: costBasis || null,
-        quantity: quantity || null,
-        unitPrice: unitPrice || null,
-        currentUnitPrice: currentUnitPrice || null,
-        priceSource: manualPricing ? 'manual' : null,
-        assetType: assetType || null
+        userId: userId, // Use authenticated user ID
       },
       include: {
-        category: true
-      }
+        category: true,
+      },
     });
-
-    // Format response
-    const responseData = {
-      id: newHolding.id,
-      symbol: newHolding.symbol,
-      name: newHolding.name,
-      valueSGD: Number(newHolding.valueSGD),
-      valueINR: Number(newHolding.valueINR),
-      valueUSD: Number(newHolding.valueUSD),
-      entryCurrency: newHolding.entryCurrency,
-      value: Number(newHolding.valueSGD),
-      currentValue: Number(newHolding.valueSGD),
-      category: newHolding.category.name,
-      location: newHolding.location,
-      quantity: newHolding.quantity ? Number(newHolding.quantity) : null,
-      unitPrice: newHolding.unitPrice ? Number(newHolding.unitPrice) : null,
-      assetType: newHolding.assetType || null,
-      costBasis: newHolding.costBasis ? Number(newHolding.costBasis) : null
-    };
 
     return NextResponse.json({
       message: 'Holding created successfully',
-      holding: responseData
-    }, { status: 201 });
-
+      holding: {
+        id: holding.id,
+        symbol: holding.symbol,
+        name: holding.name,
+        valueSGD: Number(holding.valueSGD),
+        valueINR: Number(holding.valueINR),
+        valueUSD: Number(holding.valueUSD),
+        entryCurrency: holding.entryCurrency,
+        value: Number(holding.valueSGD),
+        currentValue: Number(holding.valueSGD),
+        category: holding.category.name,
+        location: holding.location,
+        quantity: holding.quantity ? Number(holding.quantity) : null,
+        unitPrice: holding.unitPrice ? Number(holding.unitPrice) : null,
+        assetType: holding.assetType || null,
+        costBasis: holding.costBasis ? Number(holding.costBasis) : null,
+        currentUnitPrice: holding.currentUnitPrice ? Number(holding.currentUnitPrice) : null,
+        priceUpdated: holding.priceUpdated,
+        priceSource: holding.priceSource,
+      }
+    });
   } catch (error) {
     return handleApiError(error, 'POST /api/holdings');
   }

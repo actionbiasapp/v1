@@ -1,52 +1,52 @@
 // app/api/financial-profile/route.ts - Extended with allocation management
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { getCurrentUser } from '@/app/lib/auth-utils';
 
 const prisma = new PrismaClient();
-const DEV_EMAIL = 'dev@local.test';
-
-// TODO: Replace with real user lookup/auth
-async function getCurrentUser() {
-  return prisma.user.findFirst({ where: { email: DEV_EMAIL } });
-}
 
 export async function GET() {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+  try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
 
-  // Map to frontend profile fields using only User model fields
-  const profile = {
-    // annualIncome: user.annualIncome || 0, // Not in model
-    incomeCurrency: user.primaryCurrency || 'SGD',
-    taxStatus: user.taxStatus || 'Employment Pass',
-    country: user.country || 'Singapore',
-    srsLimit: user.srsLimit?.toNumber?.() ?? 35700,
-    fiGoal: user.fiGoal?.toNumber?.() ?? 2500000,
-    fiTargetYear: user.fiTargetYear || 2032,
-    profileCompleteness: user.profileCompleteness || 0,
-    coreTarget: user.coreTarget || 25,
-    growthTarget: user.growthTarget || 55,
-    hedgeTarget: user.hedgeTarget || 10,
-    liquidityTarget: user.liquidityTarget || 10,
-    rebalanceThreshold: user.rebalanceThreshold || 5
-  };
+    // Map to frontend profile fields using only User model fields
+    const profile = {
+      // annualIncome: user.annualIncome || 0, // Not in model
+      incomeCurrency: user.primaryCurrency || 'SGD',
+      taxStatus: user.taxStatus || 'Employment Pass',
+      country: user.country || 'Singapore',
+      srsLimit: user.srsLimit?.toNumber?.() ?? 35700,
+      fiGoal: user.fiGoal?.toNumber?.() ?? 2500000,
+      fiTargetYear: user.fiTargetYear || 2032,
+      profileCompleteness: user.profileCompleteness || 0,
+      coreTarget: user.coreTarget || 25,
+      growthTarget: user.growthTarget || 55,
+      hedgeTarget: user.hedgeTarget || 10,
+      liquidityTarget: user.liquidityTarget || 10,
+      rebalanceThreshold: user.rebalanceThreshold || 5
+    };
 
-  // Get yearly data
-  const yearlyData = await prisma.yearlyData.findMany({
-    where: { userId: user.id },
-    orderBy: { year: 'asc' }
-  });
+    // Get yearly data for current user
+    const yearlyData = await prisma.yearlyData.findMany({
+      where: { userId: user.id },
+      orderBy: { year: 'asc' }
+    });
 
-  return NextResponse.json({ success: true, profile, yearlyData });
+    return NextResponse.json({ success: true, profile, yearlyData });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
-  const body = await request.json();
-  const { profile, yearlyData } = body;
-
   try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+    
+    const body = await request.json();
+    const { profile, yearlyData } = body;
+
     // Step 1: Update the user's main profile data
     if (profile) {
         await prisma.user.update({
