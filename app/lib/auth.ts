@@ -5,8 +5,21 @@ import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
+// Custom adapter to handle name field issue
+const customPrismaAdapter = {
+  ...PrismaAdapter(prisma),
+  createUser: async (data: any) => {
+    return await prisma.user.create({
+      data: {
+        ...data,
+        name: data.name || 'User' // Ensure name is always provided
+      }
+    })
+  }
+}
+
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: customPrismaAdapter,
   providers: [
     EmailProvider({
       server: {
