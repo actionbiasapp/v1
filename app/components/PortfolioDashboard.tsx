@@ -100,15 +100,10 @@ export default function PortfolioDashboard() {
   const {
     holdings,
     loading,
-    dynamicInsights,
-    intelligence,
-    isInsightsLive,
-    isIntelligenceLive,
-    insightsLoading,
-    insightsError,
-    fetchHoldings,
-    fetchDynamicInsights,
-    handleInsightAction
+    insights,
+    error,
+    handleInsightAction,
+    refetch
   } = usePortfolioData();
 
   // Function to load yearly data
@@ -207,19 +202,19 @@ export default function PortfolioDashboard() {
   
   const { totalValue } = calculatePortfolioValue(holdings as any, displayCurrency, exchangeRates);
 
-  // Category Processing - handles portfolio categorization with user targets
-  const enhancedCategoryData = usePortfolioCategoryProcessor({
+  // Portfolio Category Processing - handles allocation analysis
+  const categories = usePortfolioCategoryProcessor({
     holdings: holdings as any,
     totalValue: totalValue, // Use the calculated totalValue
     displayCurrency,
-    intelligence: intelligence || undefined,
+    intelligence: undefined, // Remove intelligence for now
     customTargets: allocationTargets // Pass user targets
   });
 
   // Action Items Processing - handles recommendation processing
   const { actionItems } = useActionItemsProcessor({
-    dynamicInsights,
-    intelligence: intelligence || undefined,
+    dynamicInsights: insights || [],
+    intelligence: undefined, // Remove intelligence for now
     holdings: holdings as any
   });
 
@@ -266,7 +261,7 @@ export default function PortfolioDashboard() {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Re-fetch holdings data instead of full page refresh
-      await fetchHoldings();
+      await refetch();
       
       // Show success message
       setToast({ message: 'Holdings updated successfully!', type: 'success' });
@@ -283,7 +278,7 @@ export default function PortfolioDashboard() {
       setToast({ message: 'Failed to update holdings', type: 'error' });
       setTimeout(() => setToast(null), 3000);
     }
-  }, [fetchHoldings]);
+  }, [refetch]);
 
   // Refresh Prices Handler
   const handleRefreshPrices = async () => {
@@ -378,10 +373,10 @@ export default function PortfolioDashboard() {
       {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 py-1 sm:pt-1 pt-12">
         {/* Portfolio Status Metrics - Extracted Component */}
-        <PortfolioStatusMetrics
+        <PortfolioStatusMetrics 
           totalValue={totalValue}
           displayCurrency={displayCurrency}
-          intelligence={intelligence || undefined}
+          intelligence={undefined}
           exchangeRates={exchangeRates}
           loading={yearlyDataLoading}
           monthlySnapshots={monthlySnapshots}
@@ -432,14 +427,14 @@ export default function PortfolioDashboard() {
           )}
           
           <AppleRadialAllocation 
-            categories={enhancedCategoryData}
+            categories={categories}
             className="mb-6"
             displayCurrency={displayCurrency}
             exchangeRates={exchangeRates}
           />
           
           <FixedPortfolioGrid
-            categories={enhancedCategoryData}
+            categories={categories}
             totalValue={totalValue}
             expandedCards={expandedCards}
             onToggleExpand={handleToggleExpand}

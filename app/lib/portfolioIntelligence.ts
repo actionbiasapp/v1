@@ -394,33 +394,66 @@ function analyzeEmploymentPassAdvantages(user: UserProfile) {
  * Simple fallback intelligence (SIMPLIFIED)
  */
 export function getFallbackIntelligence(holdings: Holding[]): PortfolioIntelligenceReport {
-  const totalValue = holdings.reduce((sum, h) => sum + h.valueSGD, 0);
-  
   return {
     statusIntelligence: {
-      fiProgress: `${((totalValue / 1000000) * 100).toFixed(1)}% to first million`,
-      urgentAction: "Portfolio analysis in progress",
+      fiProgress: '0% to FI goal',
+      urgentAction: 'Add your first holding to get started',
       deadline: null,
-      netWorth: totalValue
+      netWorth: 0
     },
     allocationIntelligence: [],
-    actionIntelligence: [{
-      id: 'fallback',
-      type: 'opportunity',
-      title: 'Review Portfolio Allocation',
-      description: 'Ensure your portfolio matches your target allocation',
-      dollarImpact: 0,
-      timeline: 'This week',
-      actionText: 'Review Allocation',
-      priority: 5,
-      category: 'general'
-    }],
+    actionIntelligence: [],
     narrativeIntelligence: {
-      primaryMessage: "Portfolio intelligence is loading. Your plan remains solid.",
-      tone: 'guidance',
-      supportingMessages: ["Stick to your long-term allocation strategy"]
+      primaryMessage: 'Welcome to Action Bias! Add your first holding to get started.',
+      tone: 'guidance' as const,
+      supportingMessages: ['Your portfolio will appear here once you add holdings']
     },
     generated: new Date().toISOString(),
-    nextRefresh: new Date(Date.now() + 300000).toISOString() // 5 minutes
+    nextRefresh: new Date(Date.now() + 3600000).toISOString()
   };
+}
+
+// Simple insights generator for usePortfolioData hook
+export function generatePortfolioInsights(holdings: Holding[]): any[] {
+  if (holdings.length === 0) {
+    return [];
+  }
+  
+  const insights = [];
+  
+  // Basic portfolio insights
+  const totalValue = holdings.reduce((sum, h) => sum + (h.valueSGD || 0), 0);
+  
+  if (totalValue > 0) {
+    insights.push({
+      id: 'portfolio-value',
+      type: 'info',
+      title: 'Portfolio Value',
+      description: `Your portfolio is worth ${totalValue.toLocaleString()} SGD`,
+      priority: 1
+    });
+  }
+  
+  // Category insights
+  const categories = holdings.reduce((acc, h) => {
+    const category = h.category || 'Uncategorized';
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(h);
+    return acc;
+  }, {} as Record<string, Holding[]>);
+  
+  Object.entries(categories).forEach(([category, categoryHoldings]) => {
+    const categoryValue = categoryHoldings.reduce((sum, h) => sum + (h.valueSGD || 0), 0);
+    const percentage = totalValue > 0 ? (categoryValue / totalValue) * 100 : 0;
+    
+    insights.push({
+      id: `category-${category.toLowerCase()}`,
+      type: 'info',
+      title: `${category} Allocation`,
+      description: `${category}: ${percentage.toFixed(1)}% (${categoryValue.toLocaleString()} SGD)`,
+      priority: 2
+    });
+  });
+  
+  return insights;
 }

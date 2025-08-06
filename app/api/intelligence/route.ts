@@ -22,9 +22,9 @@ function processCategoriesForIntelligence(
   // Use custom targets if provided, otherwise use defaults
   const targets = customTargets || {
     core: 25,
-    growth: 55,
-    hedge: 10,
-    liquidity: 10,
+    growth: 25,
+    hedge: 25,
+    liquidity: 25,
     rebalanceThreshold: 5
   };
 
@@ -231,9 +231,9 @@ export async function GET() {
       'SGD',
       {
         core: 25,
-        growth: 55,
-        hedge: 10,
-        liquidity: 10,
+        growth: 25,
+        hedge: 25,
+        liquidity: 25,
         rebalanceThreshold: 5
       } // Use actual user targets
     );

@@ -102,6 +102,16 @@ export interface YearlyData {
   updatedAt: Date;
 }
 
+// 4. Portfolio Data Interface - Added for usePortfolioData hook
+export interface PortfolioData {
+  holdings: Holding[];
+  insights: any[];
+  loading: boolean;
+  error: string | null;
+  handleInsightAction: (insight: any) => Promise<void>;
+  refetch: () => Promise<void>;
+}
+
 export interface MonthlySnapshot {
   id: string;
   year: number;
@@ -346,9 +356,9 @@ export function createDefaultFinancialProfile(): FinancialProfile {
     
     // Portfolio defaults
     coreTarget: 25,
-    growthTarget: 55,
-    hedgeTarget: 10,
-    liquidityTarget: 10,
+    growthTarget: 25,
+    hedgeTarget: 25,
+    liquidityTarget: 25,
     rebalanceThreshold: 5,
     
     // Profile management

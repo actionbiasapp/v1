@@ -21,8 +21,8 @@ export const APP_CONFIG = {
     DEFAULT_FI_GOAL: 2500000,
     DEFAULT_FI_YEAR: 2032,
     
-    // Default Savings (used when no yearly data available)
-    DEFAULT_TOTAL_SAVINGS: 350000,
+    // Default Savings (start with 0 for new users)
+    DEFAULT_TOTAL_SAVINGS: 0,
     
     // Tax Brackets
     TAX_BRACKETS: {
@@ -57,9 +57,9 @@ export const APP_CONFIG = {
   // Portfolio Allocation Defaults
   ALLOCATION: {
     CORE_TARGET: 25,
-    GROWTH_TARGET: 55,
-    HEDGE_TARGET: 10,
-    LIQUIDITY_TARGET: 10,
+    GROWTH_TARGET: 25,
+    HEDGE_TARGET: 25,
+    LIQUIDITY_TARGET: 25,
     REBALANCE_THRESHOLD: 5
   },
   
