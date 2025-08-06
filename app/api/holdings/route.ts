@@ -111,7 +111,8 @@ export async function POST(request: NextRequest) {
       categoryRecord = await prisma.assetCategory.create({
         data: {
           name: category,
-          userId: userId
+          userId: userId,
+          targetPercentage: 0 // Default target percentage
         }
       });
     }
